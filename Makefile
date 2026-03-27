@@ -15,6 +15,7 @@ dev:
 	$(TERM_CMD) bash -c 'exec nix develop --command \
 		nvim \
 			-u $(CURDIR)/init.lua \
+			-V5$(CURDIR)/nvim.log \
 			$(CURDIR)/tests/linux/drivers/gpio/gpio-amd8111.c'
 
 lint:
