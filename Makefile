@@ -13,7 +13,7 @@ build:
 
 dev:
 	$(TERM_CMD) bash -c 'exec nix develop --command \
-		nvim --clean \
+		nvim \
 			-u $(CURDIR)/init.lua \
 			$(CURDIR)/tests/linux/drivers/gpio/gpio-amd8111.c'
 

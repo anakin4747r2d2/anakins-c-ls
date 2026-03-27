@@ -1,6 +1,10 @@
 
+vim.opt.swapfile = false
+
+vim.lsp.set_log_level("trace")
+
 vim.lsp.config("anakins-c-ls", {
-    cmd = { vim.fn.getcwd() .. "/anakins-c-ls" },
+    cmd = { "anakins-c-ls" },
     filetypes = { "c" },
     root_markers = { ".git" },
 })
