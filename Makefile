@@ -19,8 +19,8 @@ dev:
 lint:
 	shellcheck --external-sources --shell=bash tests/*_tests.bats
 
-test: build
-	PATH="$(CURDIR)/zig-out/bin:$$PATH" bats --formatter $(CURDIR)/bats-format-pretty tests/*_tests.bats
+test:
+	bats --formatter $(CURDIR)/bats-format-pretty tests/*_tests.bats
 
 install:
 	nix profile install .
