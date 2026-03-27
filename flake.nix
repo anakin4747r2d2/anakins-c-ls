@@ -16,11 +16,10 @@
           pname = "anakins-c-ls";
           version = "0.1.0";
           src = ./.;
-          nativeBuildInputs = [ pkgs.zig ];
-          buildPhase = "zig build -Doptimize=ReleaseSafe";
+          buildPhase = "cc -Wall -Wextra -o anakins-c-ls src/main.c";
           installPhase = ''
             mkdir -p $out/bin
-            cp zig-out/bin/anakins-c-ls $out/bin/
+            cp anakins-c-ls $out/bin/
           '';
         };
 
@@ -29,7 +28,6 @@
 
           packages = with pkgs; [
             bats
-            zig
             shellcheck
             self.packages.${system}.default
           ];

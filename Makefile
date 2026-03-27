@@ -5,10 +5,11 @@ PREFIX ?= /usr/local
 TERM_CMD = gnome-terminal --full-screen --
 
 all:
-	nix develop --command make build test lint
+	nix develop --command make test lint
 
 build:
-	zig build
+	mkdir -p out
+	cc -Wall -Wextra -o out/anakins-c-ls src/main.c
 
 dev:
 	$(TERM_CMD) bash -c 'exec nix develop --command \
