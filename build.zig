@@ -5,10 +5,11 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const mod = b.createModule(.{
-        .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+        .link_libc = true,
     });
+    mod.addCSourceFile(.{ .file = b.path("src/main.c"), .flags = &.{ "-Wall", "-Wextra" } });
 
     const exe = b.addExecutable(.{
         .name = "anakins-c-ls",
