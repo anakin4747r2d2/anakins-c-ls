@@ -36,3 +36,14 @@ see how the code can be made cleaner:
 
 Fix the code accordingly in new commits.
 
+## Documentation
+
+The C language server should pull documentation for C language features from
+tests/gcc/
+
+## Test Fixtures
+
+Always use real source files from `tests/linux/` as test fixture inputs when
+possible. Do not create synthetic `.c` files solely to act as test targets.
+Prefer pointing `lsts_hover`, `lsts_definition`, etc. at actual Linux kernel
+source files with real line/column coordinates.

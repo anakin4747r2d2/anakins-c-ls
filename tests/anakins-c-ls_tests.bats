@@ -18,3 +18,9 @@ teardown() {
     lsts_initialize
 }
 
+@test "hover on #include returns documentation" {
+    lsts_hover \
+        "linux/arch/parisc/kernel/smp.c:16:2" \
+        "fixtures/hover_include.rpc.json"
+}
+
