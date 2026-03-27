@@ -18,6 +18,11 @@ teardown() {
     lsts_initialize
 }
 
+@test "initialize response declares hoverProvider" {
+    lsts_initialize
+    echo "$LSTS_RESPONSE" | jq -e '.result.capabilities.hoverProvider == true' > /dev/null
+}
+
 @test "hover on #include returns documentation" {
     lsts_hover \
         "linux/arch/parisc/kernel/smp.c:16:2" \
