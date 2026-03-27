@@ -4,3 +4,6 @@
 [submodule "tests/linux"]
 	path = tests/linux
 	url = git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
+[submodule "tests/gcc"]
+	path = tests/gcc
+	url = https://gcc.gnu.org/git/gcc.git
