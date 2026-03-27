@@ -1,3 +1,6 @@
 [submodule "tests/lsts"]
 	path = tests/lsts
 	url = https://github.com/anakin4747/lsts
+[submodule "tests/linux"]
+	path = tests/linux
+	url = git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
