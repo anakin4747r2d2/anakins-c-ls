@@ -11,7 +11,8 @@ build:
 	mkdir -p out
 	cc -Wall -Wextra -o out/anakins-c-ls src/main.c
 
-dev:
+dev: build
+	rm -f *.log
 	$(TERM_CMD) bash -c 'exec nix develop --command \
 		nvim \
 			-u $(CURDIR)/init.lua \
