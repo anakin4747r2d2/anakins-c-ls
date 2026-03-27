@@ -179,7 +179,10 @@ static void send_initialize_result(const char *id)
     char body[256];
     snprintf(body, sizeof(body),
              "{\"jsonrpc\":\"2.0\",\"id\":%s,"
-             "\"result\":{\"capabilities\":{\"hoverProvider\":true}}}", id);
+             "\"result\":{\"capabilities\":{"
+             "\"hoverProvider\":true,"
+             "\"textDocumentSync\":{\"openClose\":true}"
+             "}}}", id);
     send_message(body);
 }
 
