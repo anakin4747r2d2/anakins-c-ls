@@ -31,6 +31,7 @@
             bats
             zig
             shellcheck
+            self.packages.${system}.default
           ];
         };
       });
