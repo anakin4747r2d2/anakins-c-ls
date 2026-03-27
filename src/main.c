@@ -5,16 +5,16 @@
 /* Documentation for the #include directive, sourced from
  * tests/gcc/gcc/doc/cpp.texi (Include Syntax section). */
 #define INCLUDE_DOC \
-    "## `#include`\\n" \
-    "\\n" \
-    "Both user and system header files are included using the preprocessing directive `#include`. It has two variants:\\n" \
-    "\\n" \
-    "- `#include <file>` \\u2014 Used for system header files. Searches for a file named *file* in a standard list of system directories. You can prepend directories to this list with the `-I` option.\\n" \
-    "\\n" \
-    "- `#include \"file\"` \\u2014 Used for header files of your own program. Searches for a file named *file* first in the directory containing the current file, then in the quote directories and then the same directories used for `<file>`. You can prepend directories to the list of quote directories with the `-iquote` option.\\n" \
-    "\\n" \
-    "The argument of `#include`, whether delimited with quote marks or angle brackets, behaves like a string constant in that comments are not recognized, and macro names are not expanded.\\n" \
-    "\\n" \
+    "## `#include`\n" \
+    "\n" \
+    "Both user and system header files are included using the preprocessing directive `#include`. It has two variants:\n" \
+    "\n" \
+    "- `#include <file>` \xe2\x80\x94 Used for system header files. Searches for a file named *file* in a standard list of system directories. You can prepend directories to this list with the `-I` option.\n" \
+    "\n" \
+    "- `#include \"file\"` \xe2\x80\x94 Used for header files of your own program. Searches for a file named *file* first in the directory containing the current file, then in the quote directories and then the same directories used for `<file>`. You can prepend directories to the list of quote directories with the `-iquote` option.\n" \
+    "\n" \
+    "The argument of `#include`, whether delimited with quote marks or angle brackets, behaves like a string constant in that comments are not recognized, and macro names are not expanded.\n" \
+    "\n" \
     "It is an error if there is anything (other than comments) on the line after the file name."
 
 #define MAX_DOCS   64
