@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":2,"result":{"contents":{"kind":"markdown","value":"## `short`\n\n`short` (or `short int`) is a signed integer type that is at least 16 bits wide and no wider than `int`. GCC uses two's complement representation for all signed integer types."}}}

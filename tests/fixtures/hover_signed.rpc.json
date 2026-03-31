@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":2,"result":{"contents":{"kind":"markdown","value":"## `signed`\n\n`signed` explicitly marks an integer type as signed. For `char`, whether plain `char` is signed or unsigned is implementation-defined; `signed char` is always signed. For `int`, `short`, and `long`, `signed` is the default and may be omitted."}}}

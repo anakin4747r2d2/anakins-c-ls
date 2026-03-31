@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":2,"result":{"contents":{"kind":"markdown","value":"## `else`\n\n`else` provides an alternative branch for an `if` statement. If the controlling expression is zero, the statement following `else` is executed instead of the `if` body.\n\n`else` is always associated with the nearest preceding `if` that lacks an `else` branch."}}}

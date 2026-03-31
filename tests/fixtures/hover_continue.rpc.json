@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":2,"result":{"contents":{"kind":"markdown","value":"## `continue`\n\n`continue` skips the remainder of the body of the nearest enclosing `for`, `while`, or `do` statement and jumps to the loop's continuation expression (in `for`) or condition test."}}}

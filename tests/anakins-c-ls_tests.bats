@@ -105,3 +105,201 @@ teardown() {
         "fixtures/hover_pragma.rpc.json"
 }
 
+@test "hover on break returns documentation" {
+    lsts_hover \
+        "linux/kernel/irq/msi.c:1190:3" \
+        "fixtures/hover_break.rpc.json"
+}
+
+@test "hover on case returns documentation" {
+    lsts_hover \
+        "linux/kernel/irq/msi.c:170:2" \
+        "fixtures/hover_case.rpc.json"
+}
+
+@test "hover on char returns documentation" {
+    lsts_hover \
+        "linux/kernel/irq/proc.c:315:2" \
+        "fixtures/hover_char.rpc.json"
+}
+
+@test "hover on const returns documentation" {
+    lsts_hover \
+        "linux/kernel/irq/proc.c:50:2" \
+        "fixtures/hover_const.rpc.json"
+}
+
+@test "hover on continue returns documentation" {
+    lsts_hover \
+        "linux/kernel/irq/msi.c:215:4" \
+        "fixtures/hover_continue.rpc.json"
+}
+
+@test "hover on default returns documentation" {
+    lsts_hover \
+        "linux/kernel/irq/msi.c:1191:2" \
+        "fixtures/hover_default.rpc.json"
+}
+
+@test "hover on do returns documentation" {
+    lsts_hover \
+        "linux/kernel/irq/spurious.c:70:2" \
+        "fixtures/hover_do.rpc.json"
+}
+
+@test "hover on double returns documentation" {
+    lsts_hover \
+        "linux/arch/powerpc/kvm/book3s_paired_singles.c:1216:4" \
+        "fixtures/hover_double.rpc.json"
+}
+
+@test "hover on else returns documentation" {
+    lsts_hover \
+        "linux/kernel/irq/msi.c:1074:2" \
+        "fixtures/hover_else_kw.rpc.json"
+}
+
+@test "hover on enum returns documentation" {
+    lsts_hover \
+        "linux/kernel/irq/proc.c:40:1" \
+        "fixtures/hover_enum.rpc.json"
+}
+
+@test "hover on extern returns documentation" {
+    lsts_hover \
+        "linux/arch/parisc/kernel/traps.c:806:2" \
+        "fixtures/hover_extern.rpc.json"
+}
+
+@test "hover on float returns documentation" {
+    lsts_hover \
+        "linux/arch/powerpc/kvm/book3s_paired_singles.c:267:2" \
+        "fixtures/hover_float.rpc.json"
+}
+
+@test "hover on for returns documentation" {
+    lsts_hover \
+        "linux/kernel/irq/msi.c:257:2" \
+        "fixtures/hover_for.rpc.json"
+}
+
+@test "hover on goto returns documentation" {
+    lsts_hover \
+        "linux/kernel/irq/msi.c:119:4" \
+        "fixtures/hover_goto.rpc.json"
+}
+
+@test "hover on if returns documentation" {
+    lsts_hover \
+        "linux/kernel/irq/msi.c:81:2" \
+        "fixtures/hover_if_kw.rpc.json"
+}
+
+@test "hover on inline returns documentation" {
+    lsts_hover \
+        "linux/kernel/sched/core.c:2121:1" \
+        "fixtures/hover_inline.rpc.json"
+}
+
+@test "hover on int returns documentation" {
+    lsts_hover \
+        "linux/kernel/irq/proc.c:102:1" \
+        "fixtures/hover_int.rpc.json"
+}
+
+@test "hover on long returns documentation" {
+    lsts_hover \
+        "linux/kernel/umh.c:239:1" \
+        "fixtures/hover_long.rpc.json"
+}
+
+@test "hover on register returns documentation" {
+    lsts_hover \
+        "linux/arch/parisc/kernel/traps.c:343:5" \
+        "fixtures/hover_register.rpc.json"
+}
+
+@test "hover on restrict returns documentation" {
+    lsts_hover \
+        "linux/crypto/shash.c:110:1" \
+        "fixtures/hover_restrict.rpc.json"
+}
+
+@test "hover on return returns documentation" {
+    lsts_hover \
+        "linux/kernel/irq/msi.c:93:2" \
+        "fixtures/hover_return.rpc.json"
+}
+
+@test "hover on short returns documentation" {
+    lsts_hover \
+        "linux/kernel/debug/kdb/kdb_io.c:589:3" \
+        "fixtures/hover_short.rpc.json"
+}
+
+@test "hover on signed returns documentation" {
+    lsts_hover \
+        "linux/kernel/time/sleep_timeout.c:61:1" \
+        "fixtures/hover_signed.rpc.json"
+}
+
+@test "hover on sizeof returns documentation" {
+    lsts_hover \
+        "linux/kernel/irq/devres.c:315:5" \
+        "fixtures/hover_sizeof.rpc.json"
+}
+
+@test "hover on static returns documentation" {
+    lsts_hover \
+        "linux/kernel/irq/dummychip.c:18:1" \
+        "fixtures/hover_static.rpc.json"
+}
+
+@test "hover on struct returns documentation" {
+    lsts_hover \
+        "linux/kernel/irq/dummychip.c:39:1" \
+        "fixtures/hover_struct.rpc.json"
+}
+
+@test "hover on switch returns documentation" {
+    lsts_hover \
+        "linux/kernel/irq/msi.c:169:2" \
+        "fixtures/hover_switch.rpc.json"
+}
+
+@test "hover on typedef returns documentation" {
+    lsts_hover \
+        "linux/kernel/sched/rt.c:491:1" \
+        "fixtures/hover_typedef.rpc.json"
+}
+
+@test "hover on union returns documentation" {
+    lsts_hover \
+        "linux/kernel/irq/msi.c:1580:2" \
+        "fixtures/hover_union.rpc.json"
+}
+
+@test "hover on unsigned returns documentation" {
+    lsts_hover \
+        "linux/kernel/irq/msi.c:33:2" \
+        "fixtures/hover_unsigned.rpc.json"
+}
+
+@test "hover on void returns documentation" {
+    lsts_hover \
+        "linux/kernel/irq/msi.c:227:1" \
+        "fixtures/hover_void.rpc.json"
+}
+
+@test "hover on volatile returns documentation" {
+    lsts_hover \
+        "linux/arch/arm/mach-exynos/platsmp.c:30:1" \
+        "fixtures/hover_volatile.rpc.json"
+}
+
+@test "hover on while returns documentation" {
+    lsts_hover \
+        "linux/kernel/irq/proc.c:519:3" \
+        "fixtures/hover_while.rpc.json"
+}
+

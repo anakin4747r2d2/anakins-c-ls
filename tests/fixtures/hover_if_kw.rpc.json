@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":2,"result":{"contents":{"kind":"markdown","value":"## `if`\n\n`if` introduces a conditional statement. The controlling expression is evaluated; if it is nonzero the `if` body is executed. An optional `else` branch is executed when the expression is zero.\n\n`if`-`else` chains can be used to test a sequence of conditions."}}}

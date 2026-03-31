@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":2,"result":{"contents":{"kind":"markdown","value":"## `return`\n\n`return` terminates execution of the current function and optionally returns a value to the caller. A `return` with no expression may only appear in a function whose return type is `void`.\n\nThe returned expression is implicitly converted to the function's return type."}}}

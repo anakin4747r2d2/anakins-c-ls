@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":2,"result":{"contents":{"kind":"markdown","value":"## `char`\n\n`char` is the basic character type. It is large enough to hold any member of the basic execution character set. Whether plain `char` is signed or unsigned is implementation-defined; GCC follows the ABI, and the behavior can be changed with `-funsigned-char` or `-fsigned-char`."}}}

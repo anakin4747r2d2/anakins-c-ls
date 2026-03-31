@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":2,"result":{"contents":{"kind":"markdown","value":"## `typedef`\n\n`typedef` introduces an alias name for a type. The new name may be used wherever the original type name could be used. `typedef` does not create a new type — it merely provides an alternative name for an existing type."}}}

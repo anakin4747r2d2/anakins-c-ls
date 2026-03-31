@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":2,"result":{"contents":{"kind":"markdown","value":"## `default`\n\n`default` introduces the default label inside a `switch` body. If no `case` label matches the `switch` expression, execution jumps to the `default` label. A `switch` statement may have at most one `default` label."}}}

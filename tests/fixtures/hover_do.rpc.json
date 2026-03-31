@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":2,"result":{"contents":{"kind":"markdown","value":"## `do`\n\n`do` introduces a do-while loop. The body is executed at least once; the controlling expression is evaluated after each execution of the body. The loop continues as long as the expression is nonzero.\n\n```c\ndo {\n    /* body */\n} while (condition);\n```"}}}

@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":2,"result":{"contents":{"kind":"markdown","value":"## `long`\n\n`long` is a signed integer type that is at least 32 bits wide and at least as wide as `int`. The `long long` extension provides a type of at least 64 bits.\n\nGCC uses two's complement representation for all signed integer types."}}}

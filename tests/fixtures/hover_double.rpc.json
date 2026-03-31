@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":2,"result":{"contents":{"kind":"markdown","value":"## `double`\n\n`double` is a floating-point type. It typically provides at least as much precision as `float`. GCC follows C99 Annex F for floating-point rounding and conversion rules.\n\n`long double` provides extended precision on many platforms."}}}

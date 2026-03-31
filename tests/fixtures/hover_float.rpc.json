@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":2,"result":{"contents":{"kind":"markdown","value":"## `float`\n\n`float` is a single-precision floating-point type. It typically corresponds to the IEEE 754 binary32 format. GCC follows C99 Annex F for floating-point rounding and conversion rules."}}}

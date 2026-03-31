@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":2,"result":{"contents":{"kind":"markdown","value":"## `break`\n\n`break` terminates the nearest enclosing `for`, `while`, `do`, or `switch` statement. Execution continues with the statement that follows the terminated statement."}}}

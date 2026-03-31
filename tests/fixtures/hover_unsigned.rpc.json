@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":2,"result":{"contents":{"kind":"markdown","value":"## `unsigned`\n\n`unsigned` marks an integer type as unsigned — it can represent only non-negative values but with twice the positive range of the corresponding signed type. For `char`, `unsigned char` is always unsigned regardless of platform defaults."}}}

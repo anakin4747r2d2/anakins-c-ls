@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":2,"result":{"contents":{"kind":"markdown","value":"## `while`\n\n`while` introduces a loop that executes its body as long as the controlling expression is nonzero. The expression is evaluated before each execution of the body; if it is zero on the first evaluation, the body is never executed."}}}

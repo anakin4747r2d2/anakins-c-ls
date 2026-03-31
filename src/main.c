@@ -1,9 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 /* Documentation for CPP directives, sourced from
- * tests/gcc/gcc/doc/cpp.texi. */
+ * tests/gcc/gcc/doc/cpp.texi.
+ * Documentation for C keywords, sourced from
+ * tests/gcc/gcc/doc/extend.texi and
+ * tests/gcc/gcc/doc/implement-c.texi. */
 
 /* Include Syntax section */
 #define INCLUDE_DOC \
@@ -108,6 +112,246 @@
     "The `#pragma` directive is the method specified by the C standard for providing additional information to the compiler, beyond what is conveyed in the language itself. The forms specified by the C standard are prefixed with `STDC`. Most GNU-defined pragmas have been given a `GCC` prefix.\n" \
     "\n" \
     "C99 introduced the `_Pragma` operator, which addresses a major problem with `#pragma`: being a directive, it cannot be produced as the result of macro expansion. `_Pragma` is an operator that can be embedded in a macro."
+
+/* C keywords — implement-c.texi: Hints implementation */
+#define BREAK_DOC \
+    "## `break`\n" \
+    "\n" \
+    "`break` terminates the nearest enclosing `for`, `while`, `do`, or `switch` statement. Execution continues with the statement that follows the terminated statement."
+
+#define CASE_DOC \
+    "## `case`\n" \
+    "\n" \
+    "`case` introduces a labeled statement inside a `switch` body. The expression must be an integer constant expression. Execution jumps to the matching `case` label when the `switch` expression equals its value.\n" \
+    "\n" \
+    "A `switch` statement may contain any number of `case` labels. Duplicate `case` values in the same `switch` are not permitted."
+
+/* implement-c.texi: Characters implementation */
+#define CHAR_DOC \
+    "## `char`\n" \
+    "\n" \
+    "`char` is the basic character type. It is large enough to hold any member of the basic execution character set. Whether plain `char` is signed or unsigned is implementation-defined; GCC follows the ABI, and the behavior can be changed with `-funsigned-char` or `-fsigned-char`."
+
+/* implement-c.texi: Qualifiers implementation */
+#define CONST_DOC \
+    "## `const`\n" \
+    "\n" \
+    "`const` is a type qualifier that declares an object whose value may not be changed after initialization. Attempts to modify a `const`-qualified object result in undefined behavior.\n" \
+    "\n" \
+    "`const` is commonly used to protect objects passed by pointer from modification and to declare read-only global data."
+
+#define CONTINUE_DOC \
+    "## `continue`\n" \
+    "\n" \
+    "`continue` skips the remainder of the body of the nearest enclosing `for`, `while`, or `do` statement and jumps to the loop's continuation expression (in `for`) or condition test."
+
+/* implement-c.texi: Statements implementation */
+#define DEFAULT_DOC \
+    "## `default`\n" \
+    "\n" \
+    "`default` introduces the default label inside a `switch` body. If no `case` label matches the `switch` expression, execution jumps to the `default` label. A `switch` statement may have at most one `default` label."
+
+#define DO_DOC \
+    "## `do`\n" \
+    "\n" \
+    "`do` introduces a do-while loop. The body is executed at least once; the controlling expression is evaluated after each execution of the body. The loop continues as long as the expression is nonzero.\n" \
+    "\n" \
+    "```c\n" \
+    "do {\n" \
+    "    /* body */\n" \
+    "} while (condition);\n" \
+    "```"
+
+/* implement-c.texi: Floating point implementation */
+#define DOUBLE_DOC \
+    "## `double`\n" \
+    "\n" \
+    "`double` is a floating-point type. It typically provides at least as much precision as `float`. GCC follows C99 Annex F for floating-point rounding and conversion rules.\n" \
+    "\n" \
+    "`long double` provides extended precision on many platforms."
+
+#define ELSE_KW_DOC \
+    "## `else`\n" \
+    "\n" \
+    "`else` provides an alternative branch for an `if` statement. If the controlling expression is zero, the statement following `else` is executed instead of the `if` body.\n" \
+    "\n" \
+    "`else` is always associated with the nearest preceding `if` that lacks an `else` branch."
+
+/* implement-c.texi: Structures unions enumerations and bit-fields implementation */
+#define ENUM_DOC \
+    "## `enum`\n" \
+    "\n" \
+    "`enum` declares an enumerated type — a set of named integer constants. The underlying integer type is normally `unsigned int` if there are no negative values, otherwise `int`. With `-fshort-enums`, smaller types may be chosen.\n" \
+    "\n" \
+    "Enumerated types and their members may be used in any integer expression."
+
+#define EXTERN_DOC \
+    "## `extern`\n" \
+    "\n" \
+    "`extern` declares an identifier as having external linkage — its definition is expected in another translation unit or later in the same translation unit. For an object, `extern` suppresses storage allocation at the declaration site.\n" \
+    "\n" \
+    "`extern` combined with `inline` has the effect of making the definition available only for inlining; calls that cannot be inlined reference an external definition."
+
+/* implement-c.texi: Floating point implementation */
+#define FLOAT_DOC \
+    "## `float`\n" \
+    "\n" \
+    "`float` is a single-precision floating-point type. It typically corresponds to the IEEE 754 binary32 format. GCC follows C99 Annex F for floating-point rounding and conversion rules."
+
+#define FOR_DOC \
+    "## `for`\n" \
+    "\n" \
+    "`for` introduces an iteration statement with three optional clauses separated by semicolons: an initialization expression, a controlling expression, and a post-iteration expression.\n" \
+    "\n" \
+    "```c\n" \
+    "for (init; condition; update) {\n" \
+    "    /* body */\n" \
+    "}\n" \
+    "```\n" \
+    "\n" \
+    "If the controlling expression is omitted it is treated as nonzero. The loop executes as long as the controlling expression is nonzero."
+
+#define GOTO_DOC \
+    "## `goto`\n" \
+    "\n" \
+    "`goto` transfers control unconditionally to a labeled statement in the same function. The target label must be visible in the function scope.\n" \
+    "\n" \
+    "Jumping into the scope of a variable-length array or a variably modified type is not permitted."
+
+#define IF_KW_DOC \
+    "## `if`\n" \
+    "\n" \
+    "`if` introduces a conditional statement. The controlling expression is evaluated; if it is nonzero the `if` body is executed. An optional `else` branch is executed when the expression is zero.\n" \
+    "\n" \
+    "`if`-`else` chains can be used to test a sequence of conditions."
+
+/* extend.texi: Inline section */
+#define INLINE_DOC \
+    "## `inline`\n" \
+    "\n" \
+    "By declaring a function `inline`, you can direct GCC to make calls to that function faster. One way GCC can achieve this is to integrate that function's code into the code for its callers, eliminating function-call overhead.\n" \
+    "\n" \
+    "When `inline` is used on a `static` function, GCC will not output assembler code for that function unless its address is taken or it cannot be inlined. When `inline` and `extern` are both specified, the definition is used only for inlining and is never compiled on its own.\n" \
+    "\n" \
+    "GCC does not inline any functions when not optimizing unless the `always_inline` attribute is used."
+
+/* implement-c.texi: Integers implementation */
+#define INT_DOC \
+    "## `int`\n" \
+    "\n" \
+    "`int` is the basic signed integer type. Its width is at least 16 bits; on most platforms it is 32 bits. GCC uses two's complement representation for all signed integer types, and all bit patterns are ordinary values."
+
+#define LONG_DOC \
+    "## `long`\n" \
+    "\n" \
+    "`long` is a signed integer type that is at least 32 bits wide and at least as wide as `int`. The `long long` extension provides a type of at least 64 bits.\n" \
+    "\n" \
+    "GCC uses two's complement representation for all signed integer types."
+
+/* implement-c.texi: Hints implementation */
+#define REGISTER_DOC \
+    "## `register`\n" \
+    "\n" \
+    "The `register` storage-class specifier is a hint that the variable should be placed in a processor register. Under `-O0`, variables without `register` are always placed on the stack; with `register`, the variable may have a shorter lifespan and may never be placed in memory.\n" \
+    "\n" \
+    "On some x86 targets `register` is required for variables to be saved across `setjmp`."
+
+/* extend.texi: Restricted Pointers section */
+#define RESTRICT_DOC \
+    "## `restrict`\n" \
+    "\n" \
+    "`restrict` (C99) is a type qualifier applicable to pointer types. It asserts that the object pointed to is accessed in the function only through that pointer, allowing the compiler to make optimizations that would be forbidden if the pointer could alias other objects.\n" \
+    "\n" \
+    "GCC also accepts `__restrict__` and `__restrict` as synonyms, which can be used in C90 mode and in C++."
+
+#define RETURN_DOC \
+    "## `return`\n" \
+    "\n" \
+    "`return` terminates execution of the current function and optionally returns a value to the caller. A `return` with no expression may only appear in a function whose return type is `void`.\n" \
+    "\n" \
+    "The returned expression is implicitly converted to the function's return type."
+
+/* implement-c.texi: Integers implementation */
+#define SHORT_DOC \
+    "## `short`\n" \
+    "\n" \
+    "`short` (or `short int`) is a signed integer type that is at least 16 bits wide and no wider than `int`. GCC uses two's complement representation for all signed integer types."
+
+#define SIGNED_DOC \
+    "## `signed`\n" \
+    "\n" \
+    "`signed` explicitly marks an integer type as signed. For `char`, whether plain `char` is signed or unsigned is implementation-defined; `signed char` is always signed. For `int`, `short`, and `long`, `signed` is the default and may be omitted."
+
+/* implement-c.texi: Architecture implementation */
+#define SIZEOF_DOC \
+    "## `sizeof`\n" \
+    "\n" \
+    "`sizeof` is an operator that yields the size in bytes of its operand, which may be a type name in parentheses or an expression. The result is a constant of type `size_t`.\n" \
+    "\n" \
+    "For a variable-length array, `sizeof` is evaluated at run time. For other types, it is a compile-time constant determined by the ABI."
+
+#define STATIC_DOC \
+    "## `static`\n" \
+    "\n" \
+    "For a variable at block scope, `static` gives it static storage duration — it is initialized once and persists for the lifetime of the program. For a variable or function at file scope, `static` gives it internal linkage — it is not visible outside the translation unit.\n" \
+    "\n" \
+    "For a `static inline` function, GCC will not emit object code for the function unless it is needed; all calls will be inlined if possible."
+
+/* implement-c.texi: Structures unions enumerations and bit-fields implementation */
+#define STRUCT_DOC \
+    "## `struct`\n" \
+    "\n" \
+    "`struct` declares an aggregate type whose members are laid out sequentially in memory. Each member has its own storage. The layout — padding between members and overall alignment — is determined by the ABI.\n" \
+    "\n" \
+    "GCC permits flexible array members (a trailing array member with no specified size) and unnamed struct/union members as extensions."
+
+/* implement-c.texi: Statements implementation */
+#define SWITCH_DOC \
+    "## `switch`\n" \
+    "\n" \
+    "`switch` transfers control to one of several statements depending on the value of an integer expression. The expression is compared against the constant expressions in `case` labels; if no match is found, control transfers to the `default` label if one exists.\n" \
+    "\n" \
+    "A `switch` body may contain any number of `case` labels and at most one `default` label."
+
+/* implement-c.texi: Types implementation */
+#define TYPEDEF_DOC \
+    "## `typedef`\n" \
+    "\n" \
+    "`typedef` introduces an alias name for a type. The new name may be used wherever the original type name could be used. `typedef` does not create a new type — it merely provides an alternative name for an existing type."
+
+/* implement-c.texi: Structures unions enumerations and bit-fields implementation */
+#define UNION_DOC \
+    "## `union`\n" \
+    "\n" \
+    "`union` declares a type whose members share the same storage. The size of the union is the size of its largest member. Only one member can hold a value at a time.\n" \
+    "\n" \
+    "Accessing a union member of a different type than the last stored member — type-punning — treats the stored bytes as an object of the accessed type. This may produce a trap representation."
+
+/* implement-c.texi: Integers implementation */
+#define UNSIGNED_DOC \
+    "## `unsigned`\n" \
+    "\n" \
+    "`unsigned` marks an integer type as unsigned — it can represent only non-negative values but with twice the positive range of the corresponding signed type. For `char`, `unsigned char` is always unsigned regardless of platform defaults."
+
+#define VOID_DOC \
+    "## `void`\n" \
+    "\n" \
+    "`void` as a return type indicates that a function returns no value. As a parameter list `(void)` explicitly declares that the function takes no arguments.\n" \
+    "\n" \
+    "`void *` is a generic pointer type that can hold any data pointer and may be converted to and from any other data pointer type without a cast."
+
+/* extend.texi: Volatiles section */
+#define VOLATILE_DOC \
+    "## `volatile`\n" \
+    "\n" \
+    "`volatile` is a type qualifier that prevents the compiler from optimizing away accesses to the qualified object. Volatile objects are normally used for memory-mapped hardware registers or for variables shared with signal handlers or other threads.\n" \
+    "\n" \
+    "The standard encourages compilers to refrain from reordering or combining volatile accesses across sequence points, but does not prevent reordering with respect to non-volatile accesses. For ordering guarantees between threads, a stronger memory barrier is required."
+
+#define WHILE_DOC \
+    "## `while`\n" \
+    "\n" \
+    "`while` introduces a loop that executes its body as long as the controlling expression is nonzero. The expression is evaluated before each execution of the body; if it is zero on the first evaluation, the body is never executed."
 
 #define MAX_DOCS   64
 #define MAX_URI    1024
@@ -390,9 +634,13 @@ static void handle_hover(const char *msg, const char *id)
         p++;
     }
 
-    /* Skip leading whitespace then check for a CPP directive.
-     * Longer prefixes are checked before shorter ones to avoid
-     * false prefix matches (e.g. #ifdef before #if). */
+    /* Skip leading whitespace then check for a CPP directive or C keyword.
+     * CPP directives: longer prefixes are checked before shorter ones to avoid
+     * false prefix matches (e.g. #ifdef before #if).
+     * C keywords: use kw() to require a word boundary after the keyword. */
+#define kw(s) (strncmp(p, s, sizeof(s)-1) == 0 && \
+               !isalnum((unsigned char)p[sizeof(s)-1]) && \
+               p[sizeof(s)-1] != '_')
     while (*p == ' ' || *p == '\t') p++;
     if (strncmp(p, "#include", 8) == 0)
         send_hover_result(id, INCLUDE_DOC);
@@ -418,8 +666,78 @@ static void handle_hover(const char *msg, const char *id)
         send_hover_result(id, WARNING_DOC);
     else if (strncmp(p, "#pragma", 7) == 0)
         send_hover_result(id, PRAGMA_DOC);
+    /* C keywords — longer keywords before shorter to avoid prefix matches */
+    else if (kw("continue"))
+        send_hover_result(id, CONTINUE_DOC);
+    else if (kw("default"))
+        send_hover_result(id, DEFAULT_DOC);
+    else if (kw("double"))
+        send_hover_result(id, DOUBLE_DOC);
+    else if (kw("extern"))
+        send_hover_result(id, EXTERN_DOC);
+    else if (kw("inline"))
+        send_hover_result(id, INLINE_DOC);
+    else if (kw("register"))
+        send_hover_result(id, REGISTER_DOC);
+    else if (kw("restrict"))
+        send_hover_result(id, RESTRICT_DOC);
+    else if (kw("return"))
+        send_hover_result(id, RETURN_DOC);
+    else if (kw("signed"))
+        send_hover_result(id, SIGNED_DOC);
+    else if (kw("sizeof"))
+        send_hover_result(id, SIZEOF_DOC);
+    else if (kw("static"))
+        send_hover_result(id, STATIC_DOC);
+    else if (kw("struct"))
+        send_hover_result(id, STRUCT_DOC);
+    else if (kw("switch"))
+        send_hover_result(id, SWITCH_DOC);
+    else if (kw("typedef"))
+        send_hover_result(id, TYPEDEF_DOC);
+    else if (kw("union"))
+        send_hover_result(id, UNION_DOC);
+    else if (kw("unsigned"))
+        send_hover_result(id, UNSIGNED_DOC);
+    else if (kw("volatile"))
+        send_hover_result(id, VOLATILE_DOC);
+    else if (kw("while"))
+        send_hover_result(id, WHILE_DOC);
+    else if (kw("break"))
+        send_hover_result(id, BREAK_DOC);
+    else if (kw("case"))
+        send_hover_result(id, CASE_DOC);
+    else if (kw("char"))
+        send_hover_result(id, CHAR_DOC);
+    else if (kw("const"))
+        send_hover_result(id, CONST_DOC);
+    else if (kw("else"))
+        send_hover_result(id, ELSE_KW_DOC);
+    else if (kw("enum"))
+        send_hover_result(id, ENUM_DOC);
+    else if (kw("float"))
+        send_hover_result(id, FLOAT_DOC);
+    else if (kw("goto"))
+        send_hover_result(id, GOTO_DOC);
+    else if (kw("long"))
+        send_hover_result(id, LONG_DOC);
+    else if (kw("short"))
+        send_hover_result(id, SHORT_DOC);
+    else if (kw("void"))
+        send_hover_result(id, VOID_DOC);
+    else if (kw("auto"))
+        send_hover_result(id, "## `auto`\n\n`auto` is the default storage class for variables declared inside a block. It gives the variable automatic storage duration — the variable exists from its declaration to the end of the enclosing block. The `auto` keyword is almost never written explicitly in C.");
+    else if (kw("do"))
+        send_hover_result(id, DO_DOC);
+    else if (kw("for"))
+        send_hover_result(id, FOR_DOC);
+    else if (kw("if"))
+        send_hover_result(id, IF_KW_DOC);
+    else if (kw("int"))
+        send_hover_result(id, INT_DOC);
     else
         send_null_result(id);
+#undef kw
 }
 
 /* ---------- dispatch ---------- */

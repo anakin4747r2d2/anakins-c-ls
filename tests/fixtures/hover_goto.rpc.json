@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":2,"result":{"contents":{"kind":"markdown","value":"## `goto`\n\n`goto` transfers control unconditionally to a labeled statement in the same function. The target label must be visible in the function scope.\n\nJumping into the scope of a variable-length array or a variably modified type is not permitted."}}}
