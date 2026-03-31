@@ -11,3 +11,5 @@ vim.lsp.config("anakins-c-ls", {
 })
 
 vim.lsp.enable("anakins-c-ls")
+
+vim.keymap.set("n", "gd", vim.lsp.buf.definition, { noremap = true, silent = true })
