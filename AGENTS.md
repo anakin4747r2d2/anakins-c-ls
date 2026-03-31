@@ -77,3 +77,34 @@ Always use real source files from `tests/linux/` as test fixture inputs when
 possible. Do not create synthetic `.c` files solely to act as test targets.
 Prefer pointing `lsts_hover`, `lsts_definition`, etc. at actual Linux kernel
 source files with real line/column coordinates.
+
+### Creating fixture files
+
+Fixture files are golden snapshots of the server's JSON-RPC response. To create
+one for a new test:
+
+1. Write the test in the bats file using `>` to redirect the snapshot directly
+   into the fixture file. No fixture argument is passed to the helper — omitting
+   it triggers snapshot mode, which prints the raw response to stdout:
+   ```bash
+   @test "definition on foo" {
+       lsts_definition \
+           "linux/kernel/irq/foo.c:42:7" \
+           > "fixtures/definition_foo.rpc.json"
+   }
+   ```
+2. Run just that test to generate the fixture:
+   ```
+   cqfd run make filter FILTER="definition on foo" 2>&1
+   ```
+   The fixture file is written automatically by the `>` redirect.
+3. Verify the fixture looks correct, then update the test to pass the fixture
+   path as an argument instead of redirecting:
+   ```bash
+   @test "definition on foo" {
+       lsts_definition \
+           "linux/kernel/irq/foo.c:42:7" \
+           "fixtures/definition_foo.rpc.json"
+   }
+   ```
+4. Run the test again to confirm it passes against the fixture.

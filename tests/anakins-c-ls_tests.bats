@@ -309,3 +309,74 @@ teardown() {
         "fixtures/hover_while.rpc.json"
 }
 
+@test "initialize response declares definitionProvider" {
+    lsts_initialize
+    echo "$LSTS_RESPONSE" | jq -e '.result.capabilities.definitionProvider == true' > /dev/null
+}
+
+@test "definition on goto label name jumps to label in same function" {
+    lsts_definition \
+        "linux/kernel/irq/msi.c:119:9" \
+        "fixtures/definition_goto_fail.rpc.json"
+}
+
+@test "definition on goto label name in second function with same label name" {
+    lsts_definition \
+        "linux/kernel/irq/msi.c:263:9" \
+        "fixtures/definition_goto_fail_second_fn.rpc.json"
+}
+
+@test "definition on goto label name in third function with same label name" {
+    lsts_definition \
+        "linux/kernel/irq/msi.c:543:9" \
+        "fixtures/definition_goto_fail_third_fn.rpc.json"
+}
+
+@test "definition on goto fail_mem jumps to fail_mem label not fail label" {
+    lsts_definition \
+        "linux/kernel/irq/msi.c:260:9" \
+        "fixtures/definition_goto_fail_mem.rpc.json"
+}
+
+@test "definition on local variable usage jumps to its declaration" {
+    lsts_definition \
+        "linux/kernel/irq/devres.c:68:2" \
+        "fixtures/definition_local_var.rpc.json"
+}
+
+@test "definition on function call jumps to function definition in same file" {
+    lsts_definition \
+        "linux/kernel/irq/devres.c:53:20" \
+        "fixtures/definition_function_call.rpc.json"
+}
+
+@test "definition on struct tag usage jumps to struct definition in same file" {
+    lsts_definition \
+        "linux/kernel/irq/devres.c:50:9" \
+        "fixtures/definition_struct_same_file.rpc.json"
+}
+
+@test "definition on macro usage jumps to macro definition in same file" {
+    lsts_definition \
+        "linux/kernel/irq/msi.c:367:30" \
+        "fixtures/definition_macro_same_file.rpc.json"
+}
+
+@test "definition on struct tag usage jumps to struct definition in included header" {
+    lsts_definition \
+        "linux/kernel/irq/proc.c:47:47" \
+        "fixtures/definition_struct_header.rpc.json"
+}
+
+@test "definition on macro usage jumps to macro definition in included header" {
+    lsts_definition \
+        "linux/kernel/irq/msi.c:340:2" \
+        "fixtures/definition_macro_header.rpc.json"
+}
+
+@test "definition on non-identifier token returns null" {
+    lsts_definition \
+        "linux/drivers/gpio/gpio-amd8111.c:61:66" \
+        "fixtures/definition_null.rpc.json"
+}
+

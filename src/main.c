@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <tree_sitter/api.h>
 #include <tree_sitter/tree-sitter-c.h>
 
@@ -532,9 +533,25 @@ static void send_initialize_result(const char *id)
              "{\"jsonrpc\":\"2.0\",\"id\":%s,"
              "\"result\":{\"capabilities\":{"
              "\"hoverProvider\":true,"
+             "\"definitionProvider\":true,"
              "\"textDocumentSync\":{\"openClose\":true}"
              "}}}", id);
     send_message(body);
+}
+
+/* Send a textDocument/definition response with a JSON array of Location
+ * objects.  locs points to an array of nlocs Location structs encoded as a
+ * JSON array string that has already been built by the caller. */
+static void send_definition_result(const char *id, const char *locs_json)
+{
+    size_t bufsz = strlen(locs_json) + 128;
+    char *body = malloc(bufsz);
+    if (!body) return;
+    snprintf(body, bufsz,
+             "{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":%s}",
+             id, locs_json);
+    send_message(body);
+    free(body);
 }
 
 static void send_hover_result(const char *id, const char *markdown)
@@ -619,6 +636,477 @@ static void handle_did_open(const char *msg)
 
     doc_store(uri, text);
     free(text);
+}
+
+/* ---------- definition helpers ---------- */
+
+#define MAX_INCLUDES 64
+#define MAX_PATH     2048
+
+/* Append a Location JSON object to buf (capacity bufsz) at byte offset s in
+ * src, with identifier length ident_len, for the given uri. */
+static void append_location(char *buf, size_t bufsz, int *count,
+                            const char *uri, const char *src, uint32_t s,
+                            uint32_t ident_len)
+{
+    uint32_t line = 0, character = 0;
+    for (uint32_t i = 0; i < s; i++) {
+        if (src[i] == '\n') { line++; character = 0; }
+        else                  character++;
+    }
+    size_t cur = strlen(buf);
+    snprintf(buf + cur, bufsz - cur,
+             "%s{\"uri\":\"%s\","
+             "\"range\":{\"start\":{\"line\":%u,\"character\":%u},"
+             "\"end\":{\"line\":%u,\"character\":%u}}}",
+             *count > 0 ? "," : "",
+             uri, line, character, line, character + ident_len);
+    (*count)++;
+}
+
+/* Find the enclosing function_definition node for a given byte offset.
+ * Returns a null node if no enclosing function_definition exists. */
+static TSNode find_enclosing_function(TSNode root, uint32_t byte)
+{
+    TSNode node = ts_node_named_descendant_for_byte_range(root, byte, byte);
+    while (!ts_node_is_null(node)) {
+        if (strcmp(ts_node_type(node), "function_definition") == 0)
+            return node;
+        node = ts_node_parent(node);
+    }
+    return ts_node_child(root, -1u); /* return a null node */
+}
+
+/* Walk an AST subtree and collect definition sites for an identifier.
+ *
+ * ident/ident_len — the name being searched.
+ * node_kind       — "identifier" or "type_identifier" or "statement_identifier".
+ * For "statement_identifier" we look inside labeled_statement nodes.
+ * For "identifier" we match declarator / function_declarator / preproc_def.
+ * For "type_identifier" we match struct/union/enum_specifier and type_definition.
+ */
+static void collect_definitions(TSNode node, const char *src,
+                                const char *ident, uint32_t ident_len,
+                                const char *kind,
+                                const char *uri,
+                                char *buf, size_t bufsz, int *count)
+{
+    if (ts_node_is_null(node)) return;
+
+    const char *ntype = ts_node_type(node);
+
+    if (strcmp(kind, "statement_identifier") == 0) {
+        /* goto labels: labeled_statement's first named child */
+        if (strcmp(ntype, "labeled_statement") == 0) {
+            TSNode id = ts_node_named_child(node, 0);
+            if (!ts_node_is_null(id) &&
+                strcmp(ts_node_type(id), "statement_identifier") == 0) {
+                uint32_t s = ts_node_start_byte(id);
+                uint32_t e = ts_node_end_byte(id);
+                if (e - s == ident_len &&
+                    strncmp(src + s, ident, ident_len) == 0)
+                    append_location(buf, bufsz, count, uri, src, s, ident_len);
+            }
+        }
+    } else if (strcmp(kind, "identifier") == 0) {
+        /* Variable / function / macro definitions.
+         * Match an "identifier" child in one of the declaration forms. */
+        if (strcmp(ntype, "declaration") == 0 ||
+            strcmp(ntype, "parameter_declaration") == 0) {
+            /* Walk all named children looking for declarator identifiers. */
+            for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+                TSNode ch = ts_node_named_child(node, i);
+                const char *ct = ts_node_type(ch);
+                /* declarator / pointer_declarator / init_declarator all
+                 * eventually contain an identifier. */
+                if (strcmp(ct, "identifier") == 0 ||
+                    strcmp(ct, "declarator") == 0 ||
+                    strcmp(ct, "init_declarator") == 0 ||
+                    strcmp(ct, "pointer_declarator") == 0 ||
+                    strcmp(ct, "array_declarator") == 0 ||
+                    strcmp(ct, "function_declarator") == 0) {
+                    /* find the inner identifier */
+                    TSNode inner = ts_node_named_descendant_for_byte_range(
+                        ch,
+                        ts_node_start_byte(ch), ts_node_start_byte(ch));
+                    while (!ts_node_is_null(inner) &&
+                           strcmp(ts_node_type(inner), "identifier") != 0)
+                        inner = ts_node_named_child(inner, 0);
+                    if (!ts_node_is_null(inner) &&
+                        strcmp(ts_node_type(inner), "identifier") == 0) {
+                        uint32_t s = ts_node_start_byte(inner);
+                        uint32_t e = ts_node_end_byte(inner);
+                        if (e - s == ident_len &&
+                            strncmp(src + s, ident, ident_len) == 0)
+                            append_location(buf, bufsz, count, uri, src, s, ident_len);
+                    }
+                }
+            }
+        } else if (strcmp(ntype, "function_definition") == 0) {
+            /* The function name sits in its function_declarator */
+            TSNode decl = ts_node_child_by_field_name(node, "declarator", 10);
+            /* Unwrap pointer_declarator if present */
+            while (!ts_node_is_null(decl) &&
+                   strcmp(ts_node_type(decl), "function_declarator") != 0) {
+                decl = ts_node_named_child(decl, 0);
+            }
+            if (!ts_node_is_null(decl) &&
+                strcmp(ts_node_type(decl), "function_declarator") == 0) {
+                TSNode name = ts_node_named_child(decl, 0);
+                if (!ts_node_is_null(name) &&
+                    strcmp(ts_node_type(name), "identifier") == 0) {
+                    uint32_t s = ts_node_start_byte(name);
+                    uint32_t e = ts_node_end_byte(name);
+                    if (e - s == ident_len &&
+                        strncmp(src + s, ident, ident_len) == 0)
+                        append_location(buf, bufsz, count, uri, src, s, ident_len);
+                }
+            }
+        } else if (strcmp(ntype, "preproc_def") == 0 ||
+                   strcmp(ntype, "preproc_function_def") == 0) {
+            TSNode name = ts_node_child_by_field_name(node, "name", 4);
+            if (!ts_node_is_null(name) &&
+                strcmp(ts_node_type(name), "identifier") == 0) {
+                uint32_t s = ts_node_start_byte(name);
+                uint32_t e = ts_node_end_byte(name);
+                if (e - s == ident_len &&
+                    strncmp(src + s, ident, ident_len) == 0)
+                    append_location(buf, bufsz, count, uri, src, s, ident_len);
+            }
+        }
+    } else if (strcmp(kind, "type_identifier") == 0) {
+        /* struct/union/enum definitions and typedefs */
+        if ((strcmp(ntype, "struct_specifier") == 0 ||
+             strcmp(ntype, "union_specifier") == 0 ||
+             strcmp(ntype, "enum_specifier") == 0) &&
+            /* Only match top-level definitions (has a body) */
+            !ts_node_is_null(ts_node_child_by_field_name(node, "body", 4))) {
+            TSNode name = ts_node_child_by_field_name(node, "name", 4);
+            if (!ts_node_is_null(name) &&
+                strcmp(ts_node_type(name), "type_identifier") == 0) {
+                uint32_t s = ts_node_start_byte(name);
+                uint32_t e = ts_node_end_byte(name);
+                if (e - s == ident_len &&
+                    strncmp(src + s, ident, ident_len) == 0)
+                    append_location(buf, bufsz, count, uri, src, s, ident_len);
+            }
+        } else if (strcmp(ntype, "type_definition") == 0) {
+            /* typedef: the alias name is the last declarator */
+            uint32_t nc = ts_node_named_child_count(node);
+            if (nc > 0) {
+                TSNode last = ts_node_named_child(node, nc - 1);
+                if (!ts_node_is_null(last) &&
+                    strcmp(ts_node_type(last), "type_identifier") == 0) {
+                    uint32_t s = ts_node_start_byte(last);
+                    uint32_t e = ts_node_end_byte(last);
+                    if (e - s == ident_len &&
+                        strncmp(src + s, ident, ident_len) == 0)
+                        append_location(buf, bufsz, count, uri, src, s, ident_len);
+                }
+            }
+        }
+    }
+
+    /* Recurse into all named children */
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++)
+        collect_definitions(ts_node_named_child(node, i), src, ident, ident_len,
+                            kind, uri, buf, bufsz, count);
+}
+
+/* Resolve a <linux/foo.h> or "foo.h" include path relative to a workspace
+ * root and the directory of the file that contains the #include.
+ * Writes the resolved absolute path into out (capacity outsz).
+ * Returns 1 on success. */
+static int resolve_include(const char *workspace_root,
+                           const char *including_file_path,
+                           const char *include_text,
+                           char *out, size_t outsz)
+{
+    /* Strip angle brackets or quotes */
+    const char *p = include_text;
+    int is_system = (*p == '<');
+    if (*p == '<' || *p == '"') p++;
+    size_t plen = strlen(p);
+    if (plen > 0 && (p[plen-1] == '>' || p[plen-1] == '"'))
+        plen--;
+
+    if (is_system) {
+        /* Try workspace_root/include/<path> */
+        snprintf(out, outsz, "%s/include/%.*s", workspace_root, (int)plen, p);
+        if (access(out, R_OK) == 0) return 1;
+        /* Try workspace_root/<path> */
+        snprintf(out, outsz, "%s/%.*s", workspace_root, (int)plen, p);
+        if (access(out, R_OK) == 0) return 1;
+    } else {
+        /* Quote include: relative to directory of including file */
+        char dir[MAX_PATH];
+        strncpy(dir, including_file_path, sizeof(dir) - 1);
+        dir[sizeof(dir) - 1] = '\0';
+        char *slash = strrchr(dir, '/');
+        if (slash) *slash = '\0';
+        else { dir[0] = '.'; dir[1] = '\0'; }
+        snprintf(out, outsz, "%s/%.*s", dir, (int)plen, p);
+        if (access(out, R_OK) == 0) return 1;
+    }
+    return 0;
+}
+
+/* Read a file from disk into a freshly malloc'd buffer.
+ * Returns NULL on failure. */
+static char *read_file(const char *path)
+{
+    FILE *f = fopen(path, "rb");
+    if (!f) return NULL;
+    fseek(f, 0, SEEK_END);
+    long sz = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (sz <= 0) { fclose(f); return NULL; }
+    char *buf = malloc((size_t)sz + 1);
+    if (!buf) { fclose(f); return NULL; }
+    if ((long)fread(buf, 1, (size_t)sz, f) != sz) {
+        free(buf); fclose(f); return NULL;
+    }
+    buf[sz] = '\0';
+    fclose(f);
+    return buf;
+}
+
+/* Search the AST of a parsed header for definitions of ident, appending
+ * Location entries to buf. */
+static void search_header(const char *header_path, const char *header_src,
+                          TSNode header_root,
+                          const char *ident, uint32_t ident_len,
+                          const char *kind,
+                          char *buf, size_t bufsz, int *count)
+{
+    /* Build a file:// URI for the header */
+    char huri[MAX_URI];
+    snprintf(huri, sizeof(huri), "file://%s", header_path);
+    collect_definitions(header_root, header_src, ident, ident_len,
+                        kind, huri, buf, bufsz, count);
+}
+
+static void handle_definition(const char *msg, const char *id)
+{
+    char uri[MAX_URI];
+    if (!json_get_string(msg, "uri", uri, sizeof(uri))) {
+        send_null_result(id);
+        return;
+    }
+
+    int line = json_get_int(msg, "line");
+    if (line < 0) {
+        send_null_result(id);
+        return;
+    }
+
+    int character = json_get_int(msg, "character");
+    if (character < 0) {
+        send_null_result(id);
+        return;
+    }
+
+    Doc *d = doc_find(uri);
+    if (!d || !d->text || !d->tree) {
+        send_null_result(id);
+        return;
+    }
+
+    /* Convert (line, character) to a byte offset. */
+    uint32_t byte = 0;
+    const char *p = d->text;
+    for (int ln = 0; ln < line; ln++) {
+        const char *nl = strchr(p, '\n');
+        if (!nl) { send_null_result(id); return; }
+        byte += (uint32_t)(nl - p) + 1;
+        p = nl + 1;
+    }
+    byte += (uint32_t)character;
+
+    TSNode root = ts_tree_root_node(d->tree);
+
+    /* Find the smallest named node at the cursor. */
+    TSNode node = ts_node_named_descendant_for_byte_range(root, byte, byte);
+    if (ts_node_is_null(node)) {
+        send_null_result(id);
+        return;
+    }
+
+    const char *node_kind = ts_node_type(node);
+    TSNode parent = ts_node_parent(node);
+
+    /* Extract the identifier text at the cursor. */
+    uint32_t    tok_start = ts_node_start_byte(node);
+    uint32_t    tok_end   = ts_node_end_byte(node);
+    const char *ident     = d->text + tok_start;
+    uint32_t    ident_len = tok_end - tok_start;
+
+    /* Determine the search kind:
+     *   statement_identifier in a goto_statement → look for labeled_statement
+     *   identifier                               → functions, variables, macros
+     *   type_identifier                          → struct/union/enum/typedef
+     * Anything else → null. */
+    const char *kind = NULL;
+
+    if (strcmp(node_kind, "statement_identifier") == 0 &&
+        !ts_node_is_null(parent) &&
+        strcmp(ts_node_type(parent), "goto_statement") == 0) {
+        kind = "statement_identifier";
+    } else if (strcmp(node_kind, "identifier") == 0) {
+        kind = "identifier";
+    } else if (strcmp(node_kind, "type_identifier") == 0) {
+        kind = "type_identifier";
+    }
+
+    if (!kind) {
+        send_null_result(id);
+        return;
+    }
+
+    /* Result buffer for JSON Location array entries. */
+    size_t bufsz = 16384;
+    char *locs = malloc(bufsz);
+    if (!locs) { send_null_result(id); return; }
+    locs[0] = '\0';
+    int count = 0;
+
+    if (strcmp(kind, "statement_identifier") == 0) {
+        /* goto labels are function-scoped: search only within the enclosing
+         * function_definition. */
+        TSNode fn = find_enclosing_function(root, byte);
+        if (ts_node_is_null(fn)) {
+            free(locs);
+            send_null_result(id);
+            return;
+        }
+        collect_definitions(fn, d->text, ident, ident_len,
+                            kind, uri, locs, bufsz, &count);
+    } else {
+        /* For identifiers: search the enclosing function first (catches local
+         * variables).  Only if nothing is found there do we fall through to a
+         * full-file search (catches function definitions and macros) and then
+         * to included headers.
+         * For type_identifiers there is no meaningful "enclosing function"
+         * scope, so skip straight to the full-file search. */
+        if (strcmp(kind, "identifier") == 0) {
+            TSNode fn = find_enclosing_function(root, byte);
+            if (!ts_node_is_null(fn))
+                collect_definitions(fn, d->text, ident, ident_len,
+                                    kind, uri, locs, bufsz, &count);
+        }
+
+        if (count == 0)
+            collect_definitions(root, d->text, ident, ident_len,
+                                kind, uri, locs, bufsz, &count);
+
+        /* Derive the workspace root from the URI:
+         * uri is "file://<root>/<relpath>"; strip "file://" and the
+         * relative path to get the root directory.
+         * We do this by finding the workspace root stored as the URI prefix
+         * registered at open time.  A simpler heuristic: strip "file://" and
+         * take the path, then look for the "tests" or "linux" anchor to find
+         * the workspace root.  Instead, resolve relative to the file's own
+         * directory and to a sibling "include" directory by walking the
+         * preproc_include nodes. */
+
+        /* Extract the file path from the URI (strip "file://") */
+        const char *file_path = uri;
+        if (strncmp(file_path, "file://", 7) == 0)
+            file_path += 7;
+
+        /* Derive the workspace root: the URI was built as
+         * "file://<LSTS_ROOT>/<rel>".  We don't store LSTS_ROOT, but we
+         * know the file is inside the workspace.  Use the parent directory
+         * of the file as the base for quote includes, and walk upward to
+         * find the workspace root for angle includes by looking for a
+         * sibling "include" directory at each level. */
+        char workspace_root[MAX_PATH] = "";
+        {
+            char dir[MAX_PATH];
+            strncpy(dir, file_path, sizeof(dir) - 1);
+            dir[sizeof(dir) - 1] = '\0';
+            char *sl = strrchr(dir, '/');
+            if (sl) *sl = '\0';
+            /* Walk up to find a directory with an "include" subdir */
+            char try[MAX_PATH];
+            char cur_dir[MAX_PATH];
+            strncpy(cur_dir, dir, sizeof(cur_dir) - 1);
+            cur_dir[sizeof(cur_dir) - 1] = '\0';
+            for (int up = 0; up < 8; up++) {
+                snprintf(try, sizeof(try), "%s/include", cur_dir);
+                if (access(try, F_OK) == 0) {
+                    strncpy(workspace_root, cur_dir, sizeof(workspace_root) - 1);
+                    workspace_root[sizeof(workspace_root) - 1] = '\0';
+                    break;
+                }
+                char *s2 = strrchr(cur_dir, '/');
+                if (!s2) break;
+                *s2 = '\0';
+            }
+        }
+
+        /* Walk preproc_include nodes and search each included file. */
+        uint32_t nchildren = ts_node_named_child_count(root);
+        char visited[MAX_INCLUDES][MAX_PATH];
+        int nvisited = 0;
+
+        for (uint32_t i = 0; i < nchildren && count == 0; i++) {
+            TSNode ch = ts_node_named_child(root, i);
+            if (strcmp(ts_node_type(ch), "preproc_include") != 0) continue;
+
+            /* Extract the path string child */
+            TSNode path_node = ts_node_named_child(ch, 0);
+            if (ts_node_is_null(path_node)) continue;
+
+            uint32_t ps = ts_node_start_byte(path_node);
+            uint32_t pe = ts_node_end_byte(path_node);
+            char include_text[MAX_PATH];
+            uint32_t plen = pe - ps < sizeof(include_text) - 1
+                            ? pe - ps : sizeof(include_text) - 1;
+            strncpy(include_text, d->text + ps, plen);
+            include_text[plen] = '\0';
+
+            char header_path[MAX_PATH];
+            if (!resolve_include(workspace_root, file_path,
+                                 include_text, header_path, sizeof(header_path)))
+                continue;
+
+            /* Avoid visiting the same header twice */
+            int already = 0;
+            for (int v = 0; v < nvisited; v++)
+                if (strcmp(visited[v], header_path) == 0) { already = 1; break; }
+            if (already) continue;
+            if (nvisited < MAX_INCLUDES)
+                strncpy(visited[nvisited++], header_path, MAX_PATH - 1);
+
+            char *hsrc = read_file(header_path);
+            if (!hsrc) continue;
+
+            TSTree *htree = ts_parser_parse_string(parser, NULL, hsrc, strlen(hsrc));
+            if (htree) {
+                search_header(header_path, hsrc, ts_tree_root_node(htree),
+                              ident, ident_len, kind, locs, bufsz, &count);
+                ts_tree_delete(htree);
+            }
+            free(hsrc);
+        }
+    }
+
+    if (count == 0) {
+        free(locs);
+        send_null_result(id);
+        return;
+    }
+
+    /* Build the final JSON array. */
+    size_t arrlen = strlen(locs) + 4;
+    char *arr = malloc(arrlen);
+    if (!arr) { free(locs); send_null_result(id); return; }
+    snprintf(arr, arrlen, "[%s]", locs);
+    free(locs);
+
+    send_definition_result(id, arr);
+    free(arr);
 }
 
 static void handle_hover(const char *msg, const char *id)
@@ -808,6 +1296,8 @@ static int handle_message(const char *msg)
         handle_did_open(msg);
     } else if (strcmp(method, "textDocument/hover") == 0) {
         handle_hover(msg, id);
+    } else if (strcmp(method, "textDocument/definition") == 0) {
+        handle_definition(msg, id);
     } else if (strcmp(method, "shutdown") == 0) {
         send_null_result(id);
     } else if (strcmp(method, "exit") == 0) {

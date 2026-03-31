@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":2,"result":[{"uri":"file://$LSTS_ROOT/linux/kernel/irq/devres.c","range":{"start":{"line":49,"character":20},"end":{"line":49,"character":22}}}]}
