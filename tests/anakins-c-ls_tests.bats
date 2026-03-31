@@ -255,6 +255,12 @@ teardown() {
         "fixtures/hover_static.rpc.json"
 }
 
+@test "hover on variable name returns null" {
+    lsts_hover \
+        "linux/drivers/gpio/gpio-amd8111.c:61:35" \
+        "fixtures/hover_null.rpc.json"
+}
+
 @test "hover on struct returns documentation" {
     lsts_hover \
         "linux/kernel/irq/dummychip.c:39:1" \
