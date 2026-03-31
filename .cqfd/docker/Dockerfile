@@ -1,11 +1,8 @@
-FROM debian:bookworm-slim
+FROM archlinux
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN pacman -Syu --noconfirm \
     gcc \
-    libc6-dev \
     make \
-    bash \
     bats \
     jq \
-    shellcheck \
-    && rm -rf /var/lib/apt/lists/*
+    shellcheck
