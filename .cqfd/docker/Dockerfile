@@ -6,4 +6,6 @@ RUN pacman -Syu --noconfirm \
     bats \
     diffutils \
     jq \
-    shellcheck
+    shellcheck \
+    tree-sitter \
+    tree-sitter-c
