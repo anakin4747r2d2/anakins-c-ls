@@ -3,29 +3,29 @@
 
 ## Build Environment
 
-This project uses cqfd for containerized builds. Always load the cqfd skill at
-the start of every session:
+This project uses nix flakes for the build environment. Enter the dev shell
+before running any build commands:
 
 ```
-/skill cqfd
+nix develop
 ```
 
-Never install build dependencies on the host or run build commands directly.
-All compilation, testing, and linting must go through cqfd.
+All tools (gcc, bats, shellcheck, jq, diffutils) are provided by the flake.
+Do not install build dependencies on the host directly.
 
 ## Running Tests
 
 Run the full test suite:
 
 ```
-cqfd run make build test
+nix develop --command make build test
 ```
 
 Run a single test or a subset of tests by name using the `filter` target with
 a regex matched against test descriptions:
 
 ```
-cqfd run make filter FILTER="hover"
+nix develop --command make filter FILTER="hover"
 ```
 
 The `FILTER` value is passed to `bats --filter` and supports any regular
@@ -95,7 +95,7 @@ one for a new test:
    ```
 2. Run just that test to generate the fixture:
    ```
-   cqfd run make filter FILTER="definition on foo" 2>&1
+   nix develop --command make filter FILTER="definition on foo" 2>&1
    ```
    The fixture file is written automatically by the `>` redirect.
 3. Verify the fixture looks correct, then update the test to pass the fixture

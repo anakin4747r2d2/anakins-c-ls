@@ -1,5 +1,7 @@
 .zig-cache/
 zig-out/
 out/
+.nix-dev/
 lsp.log
 nvim.log
+result

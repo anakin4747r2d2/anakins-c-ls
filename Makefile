@@ -9,17 +9,16 @@ FILTER ?= .
 TERM_CMD = gnome-terminal --full-screen --
 
 all:
-	cqfd run make build test lint
+	nix develop --command make build test lint
 
 build:
 	mkdir -p out
-	cc -Wall -Wextra -o out/anakins-c-ls src/main.c -ltree-sitter -ltree-sitter-c
+	cc -Wall -Wextra -Isrc -o out/anakins-c-ls src/main.c -ltree-sitter -ltree-sitter-c
 
-dev:
-	cqfd run make build
+dev: build
 	rm -f *.log
 	cd tests/linux && \
-	$(TERM_CMD) bash -c 'exec \
+	$(TERM_CMD) bash -c 'exec nix develop $(CURDIR) --command \
 		nvim \
 			-u $(CURDIR)/init.lua \
 			-V5$(CURDIR)/nvim.log \
@@ -36,4 +35,4 @@ filter:
 		--filter "$(FILTER)" tests/*_tests.bats
 
 install:
-	install -Dm755 out/anakins-c-ls $(INSTALL_DIR)/anakins-c-ls
+	nix profile install .
