@@ -13,6 +13,24 @@ the start of every session:
 Never install build dependencies on the host or run build commands directly.
 All compilation, testing, and linting must go through cqfd.
 
+## Running Tests
+
+Run the full test suite:
+
+```
+cqfd run make build test
+```
+
+Run a single test or a subset of tests by name using the `filter` target with
+a regex matched against test descriptions:
+
+```
+cqfd run make filter FILTER="hover"
+```
+
+The `FILTER` value is passed to `bats --filter` and supports any regular
+expression. Omitting `FILTER` defaults to `.` (all tests).
+
 ## Git Best Practices
 
 - **Commit Often:** Make small, focused commits.
