@@ -18,6 +18,7 @@ build:
 dev:
 	cqfd run make build
 	rm -f *.log
+	cd tests/linux && \
 	$(TERM_CMD) bash -c 'exec \
 		nvim \
 			-u $(CURDIR)/init.lua \
