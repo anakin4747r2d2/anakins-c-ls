@@ -15,7 +15,8 @@ build:
 	mkdir -p out
 	cc -Wall -Wextra -o out/anakins-c-ls src/main.c -ltree-sitter -ltree-sitter-c
 
-dev: build
+dev:
+	cqfd run make build
 	rm -f *.log
 	$(TERM_CMD) bash -c 'exec \
 		nvim \
