@@ -813,6 +813,32 @@ static void collect_definitions(TSNode node, const char *src,
                             kind, uri, buf, bufsz, count);
 }
 
+/* Walk upward from file_path until a directory with an "include" subdirectory
+ * is found; write it into out (capacity outsz).  This is the workspace root
+ * used for resolving angle-bracket includes. */
+static void derive_workspace_root(const char *file_path, char *out, size_t outsz)
+{
+    char cur[MAX_PATH];
+    strncpy(cur, file_path, sizeof(cur) - 1);
+    cur[sizeof(cur) - 1] = '\0';
+    char *sl = strrchr(cur, '/');
+    if (sl) *sl = '\0';
+
+    out[0] = '\0';
+    for (int up = 0; up < 8; up++) {
+        char probe[MAX_PATH];
+        snprintf(probe, sizeof(probe), "%s/include", cur);
+        if (access(probe, F_OK) == 0) {
+            strncpy(out, cur, outsz - 1);
+            out[outsz - 1] = '\0';
+            return;
+        }
+        char *s2 = strrchr(cur, '/');
+        if (!s2) break;
+        *s2 = '\0';
+    }
+}
+
 /* Resolve a <linux/foo.h> or "foo.h" include path relative to a workspace
  * root and the directory of the file that contains the #include.
  * Writes the resolved absolute path into out (capacity outsz).
@@ -999,51 +1025,13 @@ static void handle_definition(const char *msg, const char *id)
             collect_definitions(root, d->text, ident, ident_len,
                                 kind, uri, locs, bufsz, &count);
 
-        /* Derive the workspace root from the URI:
-         * uri is "file://<root>/<relpath>"; strip "file://" and the
-         * relative path to get the root directory.
-         * We do this by finding the workspace root stored as the URI prefix
-         * registered at open time.  A simpler heuristic: strip "file://" and
-         * take the path, then look for the "tests" or "linux" anchor to find
-         * the workspace root.  Instead, resolve relative to the file's own
-         * directory and to a sibling "include" directory by walking the
-         * preproc_include nodes. */
-
         /* Extract the file path from the URI (strip "file://") */
         const char *file_path = uri;
         if (strncmp(file_path, "file://", 7) == 0)
             file_path += 7;
 
-        /* Derive the workspace root: the URI was built as
-         * "file://<LSTS_ROOT>/<rel>".  We don't store LSTS_ROOT, but we
-         * know the file is inside the workspace.  Use the parent directory
-         * of the file as the base for quote includes, and walk upward to
-         * find the workspace root for angle includes by looking for a
-         * sibling "include" directory at each level. */
-        char workspace_root[MAX_PATH] = "";
-        {
-            char dir[MAX_PATH];
-            strncpy(dir, file_path, sizeof(dir) - 1);
-            dir[sizeof(dir) - 1] = '\0';
-            char *sl = strrchr(dir, '/');
-            if (sl) *sl = '\0';
-            /* Walk up to find a directory with an "include" subdir */
-            char try[MAX_PATH];
-            char cur_dir[MAX_PATH];
-            strncpy(cur_dir, dir, sizeof(cur_dir) - 1);
-            cur_dir[sizeof(cur_dir) - 1] = '\0';
-            for (int up = 0; up < 8; up++) {
-                snprintf(try, sizeof(try), "%s/include", cur_dir);
-                if (access(try, F_OK) == 0) {
-                    strncpy(workspace_root, cur_dir, sizeof(workspace_root) - 1);
-                    workspace_root[sizeof(workspace_root) - 1] = '\0';
-                    break;
-                }
-                char *s2 = strrchr(cur_dir, '/');
-                if (!s2) break;
-                *s2 = '\0';
-            }
-        }
+        char workspace_root[MAX_PATH];
+        derive_workspace_root(file_path, workspace_root, sizeof(workspace_root));
 
         /* Walk preproc_include nodes and search each included file. */
         uint32_t nchildren = ts_node_named_child_count(root);
