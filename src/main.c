@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <tree_sitter/api.h>
+#include <tree_sitter/tree-sitter-c.h>
 
 /* Documentation for CPP directives, sourced from
  * tests/gcc/gcc/doc/cpp.texi.
@@ -112,6 +114,14 @@
     "The `#pragma` directive is the method specified by the C standard for providing additional information to the compiler, beyond what is conveyed in the language itself. The forms specified by the C standard are prefixed with `STDC`. Most GNU-defined pragmas have been given a `GCC` prefix.\n" \
     "\n" \
     "C99 introduced the `_Pragma` operator, which addresses a major problem with `#pragma`: being a directive, it cannot be produced as the result of macro expansion. `_Pragma` is an operator that can be embedded in a macro."
+
+/* implement-c.texi: Storage duration and linkage */
+#define AUTO_DOC \
+    "## `auto`\n" \
+    "\n" \
+    "`auto` is a storage-class specifier that gives a block-scope variable automatic storage duration — the variable is allocated on entry to the block and deallocated on exit. It is the default for block-scope variables and the keyword is rarely written explicitly.\n" \
+    "\n" \
+    "In C23, `auto` gains a second meaning as a type deduced from the initializer expression, similar to `auto` in C++."
 
 /* C keywords — implement-c.texi: Hints implementation */
 #define BREAK_DOC \
@@ -359,9 +369,12 @@
 
 /* ---------- document store ---------- */
 
+static TSParser *parser;
+
 typedef struct {
-    char  uri[MAX_URI];
-    char *text;      /* heap-allocated */
+    char    uri[MAX_URI];
+    char   *text;      /* heap-allocated */
+    TSTree *tree;      /* syntax tree, heap-allocated */
 } Doc;
 
 static Doc   docs[MAX_DOCS];
@@ -384,9 +397,12 @@ static void doc_store(const char *uri, const char *text)
         strncpy(d->uri, uri, MAX_URI - 1);
         d->uri[MAX_URI - 1] = '\0';
         d->text = NULL;
+        d->tree = NULL;
     }
     free(d->text);
+    ts_tree_delete(d->tree);
     d->text = strdup(text);
+    d->tree = ts_parser_parse_string(parser, NULL, d->text, strlen(d->text));
 }
 
 /* ---------- I/O ---------- */
@@ -627,131 +643,153 @@ static void handle_hover(const char *msg, const char *id)
     }
 
     Doc *d = doc_find(uri);
-    if (!d || !d->text) {
+    if (!d || !d->text || !d->tree) {
         send_null_result(id);
         return;
     }
 
-    /* Walk to the requested 0-based line */
+    /* Convert (line, character) to a byte offset into the document text. */
+    uint32_t byte = 0;
     const char *p = d->text;
     for (int ln = 0; ln < line; ln++) {
-        p = strchr(p, '\n');
-        if (!p) { send_null_result(id); return; }
-        p++;
+        const char *nl = strchr(p, '\n');
+        if (!nl) { send_null_result(id); return; }
+        byte += (uint32_t)(nl - p) + 1;
+        p = nl + 1;
+    }
+    byte += (uint32_t)character;
+
+    /* Find the smallest named node covering that byte offset. */
+    TSNode node = ts_node_named_descendant_for_byte_range(
+        ts_tree_root_node(d->tree), byte, byte);
+
+    if (ts_node_is_null(node)) {
+        send_null_result(id);
+        return;
     }
 
-    /* Advance to the cursor column, then walk back to the start of the token.
-     * This ensures we match the word under the cursor, not the first word on
-     * the line. */
-    const char *line_start = p;
-    for (int col = 0; col < character && *p && *p != '\n'; col++)
-        p++;
-    while (p > line_start && (isalnum((unsigned char)p[-1]) || p[-1] == '_' || p[-1] == '#'))
-        p--;
+    /* Extract the token text for nodes whose type is shared by multiple
+     * keywords (e.g. storage_class_specifier covers static/extern/etc.). */
+    const char *node_type = ts_node_type(node);
+    uint32_t    tok_start = ts_node_start_byte(node);
+    uint32_t    tok_end   = ts_node_end_byte(node);
+    const char *tok       = d->text + tok_start;
+    uint32_t    tok_len   = tok_end - tok_start;
 
-    /* Check for a CPP directive or C keyword at the token start.
-     * CPP directives: longer prefixes are checked before shorter ones to avoid
-     * false prefix matches (e.g. #ifdef before #if).
-     * C keywords: use kw() to require a word boundary after the keyword. */
-#define kw(s) (strncmp(p, s, sizeof(s)-1) == 0 && \
-               !isalnum((unsigned char)p[sizeof(s)-1]) && \
-               p[sizeof(s)-1] != '_')
-    if (strncmp(p, "#include", 8) == 0)
-        send_hover_result(id, INCLUDE_DOC);
-    else if (strncmp(p, "#ifndef", 7) == 0)
-        send_hover_result(id, IFNDEF_DOC);
-    else if (strncmp(p, "#ifdef", 6) == 0)
-        send_hover_result(id, IFDEF_DOC);
-    else if (strncmp(p, "#endif", 6) == 0)
-        send_hover_result(id, ENDIF_DOC);
-    else if (strncmp(p, "#elif", 5) == 0)
-        send_hover_result(id, ELIF_DOC);
-    else if (strncmp(p, "#else", 5) == 0)
-        send_hover_result(id, ELSE_DOC);
-    else if (strncmp(p, "#define", 7) == 0)
-        send_hover_result(id, DEFINE_DOC);
-    else if (strncmp(p, "#undef", 6) == 0)
-        send_hover_result(id, UNDEF_DOC);
-    else if (strncmp(p, "#if", 3) == 0)
-        send_hover_result(id, IF_DOC);
-    else if (strncmp(p, "#error", 6) == 0)
-        send_hover_result(id, ERROR_DOC);
-    else if (strncmp(p, "#warning", 8) == 0)
-        send_hover_result(id, WARNING_DOC);
-    else if (strncmp(p, "#pragma", 7) == 0)
-        send_hover_result(id, PRAGMA_DOC);
-    /* C keywords — longer keywords before shorter to avoid prefix matches */
-    else if (kw("continue"))
-        send_hover_result(id, CONTINUE_DOC);
-    else if (kw("default"))
-        send_hover_result(id, DEFAULT_DOC);
-    else if (kw("double"))
-        send_hover_result(id, DOUBLE_DOC);
-    else if (kw("extern"))
-        send_hover_result(id, EXTERN_DOC);
-    else if (kw("inline"))
-        send_hover_result(id, INLINE_DOC);
-    else if (kw("register"))
-        send_hover_result(id, REGISTER_DOC);
-    else if (kw("restrict"))
-        send_hover_result(id, RESTRICT_DOC);
-    else if (kw("return"))
-        send_hover_result(id, RETURN_DOC);
-    else if (kw("signed"))
-        send_hover_result(id, SIGNED_DOC);
-    else if (kw("sizeof"))
-        send_hover_result(id, SIZEOF_DOC);
-    else if (kw("static"))
-        send_hover_result(id, STATIC_DOC);
-    else if (kw("struct"))
-        send_hover_result(id, STRUCT_DOC);
-    else if (kw("switch"))
-        send_hover_result(id, SWITCH_DOC);
-    else if (kw("typedef"))
+    /* Match node type first, then token text where needed. */
+#define tok_is(s) (tok_len == sizeof(s)-1 && strncmp(tok, s, sizeof(s)-1) == 0)
+#define type_is(s) (strcmp(node_type, s) == 0)
+
+    if (type_is("storage_class_specifier")) {
+        if      (tok_is("static"))   send_hover_result(id, STATIC_DOC);
+        else if (tok_is("extern"))   send_hover_result(id, EXTERN_DOC);
+        else if (tok_is("register")) send_hover_result(id, REGISTER_DOC);
+        else if (tok_is("auto"))     send_hover_result(id, AUTO_DOC);
+        else if (tok_is("inline"))   send_hover_result(id, INLINE_DOC);
+        else                         send_null_result(id);
+    } else if (type_is("type_qualifier")) {
+        if      (tok_is("const"))    send_hover_result(id, CONST_DOC);
+        else if (tok_is("volatile")) send_hover_result(id, VOLATILE_DOC);
+        else if (tok_is("restrict")) send_hover_result(id, RESTRICT_DOC);
+        else                         send_null_result(id);
+    } else if (type_is("primitive_type")) {
+        if      (tok_is("int"))    send_hover_result(id, INT_DOC);
+        else if (tok_is("char"))   send_hover_result(id, CHAR_DOC);
+        else if (tok_is("float"))  send_hover_result(id, FLOAT_DOC);
+        else if (tok_is("double")) send_hover_result(id, DOUBLE_DOC);
+        else if (tok_is("void"))   send_hover_result(id, VOID_DOC);
+        else                       send_null_result(id);
+    } else if (type_is("sized_type_specifier")) {
+        /* The named node spans the whole specifier (e.g. "unsigned int").
+         * Get the unnamed leaf directly under the cursor to find the keyword. */
+        TSNode leaf = ts_node_descendant_for_byte_range(
+            ts_tree_root_node(d->tree), byte, byte);
+        const char *ltok = d->text + ts_node_start_byte(leaf);
+        uint32_t    llen = ts_node_end_byte(leaf) - ts_node_start_byte(leaf);
+#define ltok_is(s) (llen == sizeof(s)-1 && strncmp(ltok, s, sizeof(s)-1) == 0)
+        if      (ltok_is("short"))    send_hover_result(id, SHORT_DOC);
+        else if (ltok_is("long"))     send_hover_result(id, LONG_DOC);
+        else if (ltok_is("signed"))   send_hover_result(id, SIGNED_DOC);
+        else if (ltok_is("unsigned")) send_hover_result(id, UNSIGNED_DOC);
+        else                          send_null_result(id);
+#undef ltok_is
+    } else if (type_is("type_definition")) {
+        /* typedef keyword sits inside a type_definition node */
         send_hover_result(id, TYPEDEF_DOC);
-    else if (kw("union"))
+    } else if (type_is("struct_specifier")) {
+        send_hover_result(id, STRUCT_DOC);
+    } else if (type_is("union_specifier")) {
         send_hover_result(id, UNION_DOC);
-    else if (kw("unsigned"))
-        send_hover_result(id, UNSIGNED_DOC);
-    else if (kw("volatile"))
-        send_hover_result(id, VOLATILE_DOC);
-    else if (kw("while"))
-        send_hover_result(id, WHILE_DOC);
-    else if (kw("break"))
-        send_hover_result(id, BREAK_DOC);
-    else if (kw("case"))
-        send_hover_result(id, CASE_DOC);
-    else if (kw("char"))
-        send_hover_result(id, CHAR_DOC);
-    else if (kw("const"))
-        send_hover_result(id, CONST_DOC);
-    else if (kw("else"))
-        send_hover_result(id, ELSE_KW_DOC);
-    else if (kw("enum"))
+    } else if (type_is("enum_specifier")) {
         send_hover_result(id, ENUM_DOC);
-    else if (kw("float"))
-        send_hover_result(id, FLOAT_DOC);
-    else if (kw("goto"))
-        send_hover_result(id, GOTO_DOC);
-    else if (kw("long"))
-        send_hover_result(id, LONG_DOC);
-    else if (kw("short"))
-        send_hover_result(id, SHORT_DOC);
-    else if (kw("void"))
-        send_hover_result(id, VOID_DOC);
-    else if (kw("auto"))
-        send_hover_result(id, "## `auto`\n\n`auto` is the default storage class for variables declared inside a block. It gives the variable automatic storage duration — the variable exists from its declaration to the end of the enclosing block. The `auto` keyword is almost never written explicitly in C.");
-    else if (kw("do"))
-        send_hover_result(id, DO_DOC);
-    else if (kw("for"))
-        send_hover_result(id, FOR_DOC);
-    else if (kw("if"))
+    } else if (type_is("sizeof_expression")) {
+        send_hover_result(id, SIZEOF_DOC);
+    } else if (type_is("return_statement")) {
+        send_hover_result(id, RETURN_DOC);
+    } else if (type_is("if_statement")) {
         send_hover_result(id, IF_KW_DOC);
-    else if (kw("int"))
-        send_hover_result(id, INT_DOC);
-    else
+    } else if (type_is("else_clause")) {
+        send_hover_result(id, ELSE_KW_DOC);
+    } else if (type_is("for_statement")) {
+        send_hover_result(id, FOR_DOC);
+    } else if (type_is("while_statement")) {
+        send_hover_result(id, WHILE_DOC);
+    } else if (type_is("do_statement")) {
+        send_hover_result(id, DO_DOC);
+    } else if (type_is("switch_statement")) {
+        send_hover_result(id, SWITCH_DOC);
+    } else if (type_is("case_statement")) {
+        /* The named node spans the whole case body; use the leaf token
+         * to distinguish "case" from "default". */
+        TSNode leaf = ts_node_descendant_for_byte_range(
+            ts_tree_root_node(d->tree), byte, byte);
+        const char *ltok = d->text + ts_node_start_byte(leaf);
+        uint32_t    llen = ts_node_end_byte(leaf) - ts_node_start_byte(leaf);
+#define ltok_is(s) (llen == sizeof(s)-1 && strncmp(ltok, s, sizeof(s)-1) == 0)
+        if (ltok_is("default")) send_hover_result(id, DEFAULT_DOC);
+        else                    send_hover_result(id, CASE_DOC);
+#undef ltok_is
+    } else if (type_is("break_statement")) {
+        send_hover_result(id, BREAK_DOC);
+    } else if (type_is("continue_statement")) {
+        send_hover_result(id, CONTINUE_DOC);
+    } else if (type_is("goto_statement")) {
+        send_hover_result(id, GOTO_DOC);
+    } else if (type_is("preproc_include")) {
+        send_hover_result(id, INCLUDE_DOC);
+    } else if (type_is("preproc_def") || type_is("preproc_function_def")) {
+        send_hover_result(id, DEFINE_DOC);
+    } else if (type_is("preproc_ifdef")) {
+        /* The named node spans the whole conditional block; use the leaf
+         * token to distinguish #ifdef / #ifndef / #endif. */
+        TSNode leaf = ts_node_descendant_for_byte_range(
+            ts_tree_root_node(d->tree), byte, byte);
+        const char *ltok = d->text + ts_node_start_byte(leaf);
+        uint32_t    llen = ts_node_end_byte(leaf) - ts_node_start_byte(leaf);
+#define ltok_is(s) (llen == sizeof(s)-1 && strncmp(ltok, s, sizeof(s)-1) == 0)
+        if      (ltok_is("#ifndef")) send_hover_result(id, IFNDEF_DOC);
+        else if (ltok_is("#endif"))  send_hover_result(id, ENDIF_DOC);
+        else                         send_hover_result(id, IFDEF_DOC);
+#undef ltok_is
+    } else if (type_is("preproc_if")) {
+        send_hover_result(id, IF_DOC);
+    } else if (type_is("preproc_elif")) {
+        send_hover_result(id, ELIF_DOC);
+    } else if (type_is("preproc_else")) {
+        send_hover_result(id, ELSE_DOC);
+    } else if (type_is("preproc_directive")) {
+        if      (tok_is("#undef"))   send_hover_result(id, UNDEF_DOC);
+        else if (tok_is("#error"))   send_hover_result(id, ERROR_DOC);
+        else if (tok_is("#warning")) send_hover_result(id, WARNING_DOC);
+        else if (tok_is("#pragma"))  send_hover_result(id, PRAGMA_DOC);
+        else if (tok_is("#endif"))   send_hover_result(id, ENDIF_DOC);
+        else                         send_null_result(id);
+    } else {
         send_null_result(id);
-#undef kw
+    }
+
+#undef tok_is
+#undef type_is
 }
 
 /* ---------- dispatch ---------- */
@@ -781,11 +819,16 @@ static int handle_message(const char *msg)
 
 int main(void)
 {
+    parser = ts_parser_new();
+    ts_parser_set_language(parser, tree_sitter_c());
+
     char *msg;
     while ((msg = read_message()) != NULL) {
         int keep = handle_message(msg);
         free(msg);
         if (!keep) break;
     }
+
+    ts_parser_delete(parser);
     return 0;
 }
