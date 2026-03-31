@@ -620,6 +620,12 @@ static void handle_hover(const char *msg, const char *id)
         return;
     }
 
+    int character = json_get_int(msg, "character");
+    if (character < 0) {
+        send_null_result(id);
+        return;
+    }
+
     Doc *d = doc_find(uri);
     if (!d || !d->text) {
         send_null_result(id);
@@ -634,14 +640,22 @@ static void handle_hover(const char *msg, const char *id)
         p++;
     }
 
-    /* Skip leading whitespace then check for a CPP directive or C keyword.
+    /* Advance to the cursor column, then walk back to the start of the token.
+     * This ensures we match the word under the cursor, not the first word on
+     * the line. */
+    const char *line_start = p;
+    for (int col = 0; col < character && *p && *p != '\n'; col++)
+        p++;
+    while (p > line_start && (isalnum((unsigned char)p[-1]) || p[-1] == '_' || p[-1] == '#'))
+        p--;
+
+    /* Check for a CPP directive or C keyword at the token start.
      * CPP directives: longer prefixes are checked before shorter ones to avoid
      * false prefix matches (e.g. #ifdef before #if).
      * C keywords: use kw() to require a word boundary after the keyword. */
 #define kw(s) (strncmp(p, s, sizeof(s)-1) == 0 && \
                !isalnum((unsigned char)p[sizeof(s)-1]) && \
                p[sizeof(s)-1] != '_')
-    while (*p == ' ' || *p == '\t') p++;
     if (strncmp(p, "#include", 8) == 0)
         send_hover_result(id, INCLUDE_DOC);
     else if (strncmp(p, "#ifndef", 7) == 0)
