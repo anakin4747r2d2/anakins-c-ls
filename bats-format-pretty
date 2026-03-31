@@ -10,12 +10,16 @@
 set -e
 
 # Locate formatter.bash relative to the bats binary so this script works
-# regardless of which nix store path bats lives in.
-# bats may be invoked as .../bin/bats or .../libexec/bats-core/bats depending
-# on context; strip either suffix to reach the package root.
+# regardless of install layout.  bats may be invoked as:
+#   .../bin/bats                   (standard / nix)
+#   .../libexec/bats-core/bats     (some distros)
+#   .../lib/bats-core/bats         (Arch Linux)
+# Strip the known suffixes to reach the package root, then source
+# lib/bats-core/formatter.bash underneath it.
 _bats_bin="$(realpath "$(command -v bats)")"
 _bats_root="${_bats_bin%/bin/bats}"
 _bats_root="${_bats_root%/libexec/bats-core/bats}"
+_bats_root="${_bats_root%/lib/bats-core/bats}"
 # shellcheck source=formatter.bash
 source "$_bats_root/lib/bats-core/formatter.bash"
 
