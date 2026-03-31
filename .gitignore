@@ -1,6 +1,3 @@
-.zig-cache/
-zig-out/
-out/
 lsp.log
 nvim.log
 result
