@@ -13,7 +13,7 @@ all:
 
 build:
 	mkdir -p out
-	cc -Wall -Wextra -Isrc -o out/anakins-c-ls src/main.c -ltree-sitter -ltree-sitter-c
+	cc -Wall -Wextra -Isrc -o out/anakins-c-ls src/main.c -ltree-sitter -l:c.so
 
 dev: build
 	rm -f *.log
