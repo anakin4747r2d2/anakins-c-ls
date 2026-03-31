@@ -826,7 +826,7 @@ static void derive_workspace_root(const char *file_path, char *out, size_t outsz
 
     out[0] = '\0';
     for (int up = 0; up < 8; up++) {
-        char probe[MAX_PATH];
+        char probe[MAX_PATH + 9];
         snprintf(probe, sizeof(probe), "%s/include", cur);
         if (access(probe, F_OK) == 0) {
             strncpy(out, cur, outsz - 1);
