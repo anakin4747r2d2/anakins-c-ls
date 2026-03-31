@@ -1,8 +1,10 @@
-.PHONY: all dev test lint install build
+.PHONY: all dev test filter lint install build
 
 PREFIX ?= /usr/local
 
 INSTALL_DIR = $(PREFIX)/bin
+
+FILTER ?= .
 
 TERM_CMD = gnome-terminal --full-screen --
 
@@ -26,6 +28,10 @@ lint:
 
 test:
 	PATH="$(CURDIR)/out:$(PATH)" bats --formatter $(CURDIR)/bats-format-pretty tests/*_tests.bats
+
+filter:
+	PATH="$(CURDIR)/out:$(PATH)" bats --formatter $(CURDIR)/bats-format-pretty \
+		--filter "$(FILTER)" tests/*_tests.bats
 
 install:
 	install -Dm755 out/anakins-c-ls $(INSTALL_DIR)/anakins-c-ls
