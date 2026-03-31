@@ -1,15 +1,15 @@
 #!/usr/bin/env bats
 
+# lsts uses read -N $content_length to read LSP message bodies.  bash's read -N
+# counts characters in the current locale, but Content-Length is a byte count.
+# Setting LC_ALL=C makes read -N count bytes, matching what the server sends.
+export LC_ALL=C
+
 source ./tests/lsts/lsts
 
 lsts_set_cmd "anakins-c-ls"
 lsts_set_root "$(dirname "$BATS_TEST_FILENAME")"
 lsts_set_langId "c"
-
-# lsts uses read -t $LSTS_TIMEOUT to wait for server messages.  The server
-# responds in <10ms; a 2-second ceiling is generous while avoiding the 10s
-# default which fires on every test even when the server replies immediately.
-LSTS_TIMEOUT=2
 
 setup() {
     lsts_start

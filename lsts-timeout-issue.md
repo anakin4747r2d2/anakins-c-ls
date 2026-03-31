@@ -1,74 +1,50 @@
-# lsts: read -t timeout causes bats to wait after every test
+# lsts: read -N counts characters not bytes, causing timeout on UTF-8 bodies
 
 ## Problem
 
-Every test that receives an LSP response takes `LSTS_TIMEOUT` seconds to
-complete (default: 10s) even when the server replies immediately.
+Every test that receives an LSP response containing multibyte UTF-8 characters
+takes `LSTS_TIMEOUT` seconds (default: 10s) to complete, even when the server
+replies immediately.
 
 ## Root cause
 
-`lsts_recv` reads the JSON-RPC header with:
+`lsts_recv` reads the JSON-RPC message body with:
 
 ```bash
-while IFS= read -r -t "${LSTS_TIMEOUT:-10}" line <&"$LSTS_READ_FD"; do
-    ...
-    [[ -z "$line" ]] && break
-done
+IFS= read -r -N "$content_length" -t "${LSTS_TIMEOUT:-10}" raw <&"$LSTS_READ_FD"
 ```
 
-When the server sends a message, the first few iterations consume the header
-lines, then the loop `break`s on the empty separator line.  At this point the
-`read` call has exited normally — but bats runs each test body in a subshell
-and waits for **all background timers** spawned within it to expire before
-recording the test result.  Bash's `read -t N` uses an internal SIGALRM-based
-timer; even after the `break`, bats sees the outstanding timer and waits for it
-to fire.
+`Content-Length` is specified in **bytes** by the LSP specification.  However,
+bash's `read -N` counts **characters** in the current locale.  When the
+response body contains multibyte UTF-8 sequences (e.g. em dashes `—`, 3 bytes
+each), the byte count exceeds the character count.  `read -N` waits for more
+characters that never arrive, blocking until `LSTS_TIMEOUT` fires.
 
-The same applies to the `read -r -N $content_length -t "${LSTS_TIMEOUT:-10}"`
-body read: if the body arrives quickly, the 10-second alarm still runs to
-completion inside the bats subshell.
+### Concrete example
+
+The hover response for `#include` contains two em dashes:
+
+```
+Content-Length: 1007   ← byte count
+...body (1003 chars, 1007 bytes: 2 × em dash = 2 × 3 bytes)
+```
+
+In a UTF-8 locale `read -N 1007` expects 1007 characters but only 1003 are in
+the body, so it waits 10 seconds for 4 more characters that never arrive.
 
 ## Workaround applied here
 
-`LSTS_TIMEOUT=2` is set in `tests/anakins-c-ls_tests.bats`.  The server
-responds in under 10 ms; 2 seconds is a comfortable margin while keeping tests
-fast.  This reduces per-test overhead from ~10 s to ~2 s.
+`export LC_ALL=C` is set at the top of `tests/anakins-c-ls_tests.bats`, before
+sourcing `lsts`.  In the C locale `read -N` counts bytes, matching
+`Content-Length` exactly.  This reduces the hover test from ~10 s to ~55 ms.
 
 ## Proper fix (requires change in lsts)
 
-The `lsts_recv` function in `tests/lsts/lsts` should close and reopen the read
-file descriptor after successfully reading a complete message, so that any
-in-flight `read -t` alarm is cancelled before bats waits on the subshell.  One
-approach:
+`lsts_recv` in `tests/lsts/lsts` should force byte semantics for the body read:
 
 ```bash
-lsts_recv() {
-    local line content_length=0 raw
-
-    while IFS= read -r -t "${LSTS_TIMEOUT:-10}" line <&"$LSTS_READ_FD"; do
-        line="${line%$'\r'}"
-        [[ -z "$line" ]] && break
-        if [[ "$line" =~ ^Content-Length:\ ([0-9]+)$ ]]; then
-            content_length="${BASH_REMATCH[1]}"
-        fi
-    done
-
-    [[ "$content_length" -eq 0 ]] && {
-        echo "lsts_recv: no Content-Length header received" >&2
-        return 1
-    }
-
-    IFS= read -r -N "$content_length" -t "${LSTS_TIMEOUT:-10}" raw <&"$LSTS_READ_FD"
-
-    # Close and reopen the read FD so that any pending SIGALRM timer from the
-    # read -t calls above is cancelled before returning to the caller.  Without
-    # this, bats waits LSTS_TIMEOUT seconds per test for the alarm to fire.
-    exec {LSTS_READ_FD}<&"$LSTS_READ_FD"
-
-    LSTS_RESPONSE="$(printf '%s' "$raw" | jq -c .)"
-}
+IFS= LC_ALL=C read -r -N "$content_length" -t "${LSTS_TIMEOUT:-10}" raw <&"$LSTS_READ_FD"
 ```
 
-Alternatively, lower the default value of `LSTS_TIMEOUT` in `lsts` itself —
-the current default of 10 s is appropriate for slow servers but makes the
-common case unnecessarily expensive.
+Prefixing the `read` command with `LC_ALL=C` overrides the locale for that
+single command without affecting the rest of the script.
