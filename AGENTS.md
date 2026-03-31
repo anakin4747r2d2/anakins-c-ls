@@ -1,6 +1,18 @@
 
 # Anakin's C Language Server
 
+## Build Environment
+
+This project uses cqfd for containerized builds. Always load the cqfd skill at
+the start of every session:
+
+```
+/skill cqfd
+```
+
+Never install build dependencies on the host or run build commands directly.
+All compilation, testing, and linting must go through cqfd.
+
 ## Git Best Practices
 
 - **Commit Often:** Make small, focused commits.
@@ -14,7 +26,7 @@
 
 Commit every logical atomic addition or change using git. Each commit should
 represent one coherent unit of work (e.g. add a helper function, fix a bug,
-update the flake). Do not batch unrelated changes into a single commit. Commit
+update the Dockerfile). Do not batch unrelated changes into a single commit. Commit
 messages should be concise and written in the imperative mood.
 
 ## Code review
