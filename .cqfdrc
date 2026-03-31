@@ -1,0 +1,6 @@
+[project]
+org='anakin4747'
+name='anakins-c-ls'
+
+[build]
+command='make build test lint'
