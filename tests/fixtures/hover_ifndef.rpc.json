@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":2,"result":{"contents":{"kind":"markdown","value":"## `#ifndef`\n\n`#ifndef` is used to include code only when a macro is *not* defined. You can use `#ifndef` instead of `#ifdef` to invert the sense of the test.\n\nOne common use of `#ifndef` is to include code only the first time a header file is included (include guards)."}}}

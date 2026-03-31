@@ -2,8 +2,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Documentation for the #include directive, sourced from
- * tests/gcc/gcc/doc/cpp.texi (Include Syntax section). */
+/* Documentation for CPP directives, sourced from
+ * tests/gcc/gcc/doc/cpp.texi. */
+
+/* Include Syntax section */
 #define INCLUDE_DOC \
     "## `#include`\n" \
     "\n" \
@@ -16,6 +18,96 @@
     "The argument of `#include`, whether delimited with quote marks or angle brackets, behaves like a string constant in that comments are not recognized, and macro names are not expanded.\n" \
     "\n" \
     "It is an error if there is anything (other than comments) on the line after the file name."
+
+/* Object-like Macros section */
+#define DEFINE_DOC \
+    "## `#define`\n" \
+    "\n" \
+    "You create macros with the `#define` directive. `#define` is followed by the name of the macro and then the token sequence it should be an abbreviation for, which is variously referred to as the macro's *body*, *expansion* or *replacement list*.\n" \
+    "\n" \
+    "The macro's body ends at the end of the `#define` line. You may continue the definition onto multiple lines, if necessary, using backslash-newline. When the macro is expanded, however, it will all come out on one line.\n" \
+    "\n" \
+    "By convention, macro names are written in uppercase. Programs are easier to read when it is possible to tell at a glance which names are macros."
+
+/* Undefining and Redefining Macros section */
+#define UNDEF_DOC \
+    "## `#undef`\n" \
+    "\n" \
+    "If a macro ceases to be useful, it may be undefined with the `#undef` directive. `#undef` takes a single argument, the name of the macro to undefine. You use the bare macro name, even if the macro is function-like. It is an error if anything appears on the line after the macro name. `#undef` has no effect if the name is not a macro.\n" \
+    "\n" \
+    "Once a macro has been undefined, that identifier may be redefined as a macro by a subsequent `#define` directive. The new definition need not have any resemblance to the old definition."
+
+/* Ifdef subsection */
+#define IFDEF_DOC \
+    "## `#ifdef`\n" \
+    "\n" \
+    "`#ifdef MACRO` is the simplest form of conditional. The controlled text is included in the output if and only if `MACRO` is defined. The conditional group must be closed with `#endif`.\n" \
+    "\n" \
+    "Controlled text inside a conditional can include preprocessing directives, executed only if the conditional succeeds. Conditional groups may be nested but must be completely nested."
+
+/* Ifdef subsection (#ifndef portion) */
+#define IFNDEF_DOC \
+    "## `#ifndef`\n" \
+    "\n" \
+    "`#ifndef` is used to include code only when a macro is *not* defined. You can use `#ifndef` instead of `#ifdef` to invert the sense of the test.\n" \
+    "\n" \
+    "One common use of `#ifndef` is to include code only the first time a header file is included (include guards)."
+
+/* If subsection */
+#define IF_DOC \
+    "## `#if`\n" \
+    "\n" \
+    "The `#if` directive allows you to test the value of an arithmetic expression, rather than the mere existence of one macro. The expression may contain integer constants, character constants, arithmetic and logical operators, macros, and uses of the `defined` operator.\n" \
+    "\n" \
+    "If the value of the expression comes out to be nonzero, the `#if` succeeds and the controlled text is included; otherwise it is skipped."
+
+/* Elif subsection */
+#define ELIF_DOC \
+    "## `#elif`\n" \
+    "\n" \
+    "`#elif` stands for \"else if\". Like `#else`, it goes in the middle of a conditional group and subdivides it; it does not require a matching `#endif` of its own. Like `#if`, the `#elif` directive includes an expression to be tested.\n" \
+    "\n" \
+    "The text following `#elif` is processed only if the original `#if`-condition failed and the `#elif` condition succeeds. More than one `#elif` can go in the same conditional group."
+
+/* Else subsection */
+#define ELSE_DOC \
+    "## `#else`\n" \
+    "\n" \
+    "The `#else` directive can be added to a conditional to provide alternative text to be used if the condition fails. If the expression in the opening `#if` (or `#ifdef`/`#ifndef`) is nonzero, the text before `#else` is included and the text after is skipped. If the expression is zero, the opposite happens.\n" \
+    "\n" \
+    "You can use `#else` with `#ifdef` and `#ifndef`, too."
+
+/* Ifdef subsection (#endif portion) */
+#define ENDIF_DOC \
+    "## `#endif`\n" \
+    "\n" \
+    "`#endif` closes a conditional group opened by `#if`, `#ifdef`, or `#ifndef`. Every conditional must be terminated by a matching `#endif`.\n" \
+    "\n" \
+    "A comment following `#endif` naming the tested macro is good practice when there is a lot of controlled text, because it helps readers match the `#endif` to the corresponding opening directive."
+
+/* Diagnostics chapter */
+#define ERROR_DOC \
+    "## `#error`\n" \
+    "\n" \
+    "The directive `#error` causes the preprocessor to report a fatal error. The tokens forming the rest of the line following `#error` are used as the error message.\n" \
+    "\n" \
+    "You would use `#error` inside of a conditional that detects a combination of parameters which you know the program does not properly support."
+
+/* Diagnostics chapter (#warning portion) */
+#define WARNING_DOC \
+    "## `#warning`\n" \
+    "\n" \
+    "The directive `#warning` is like `#error`, but causes the preprocessor to issue a warning and continue preprocessing. The tokens following `#warning` are used as the warning message.\n" \
+    "\n" \
+    "You might use `#warning` in obsolete header files, with a message directing the user to the header file which should be used instead."
+
+/* Pragmas chapter */
+#define PRAGMA_DOC \
+    "## `#pragma`\n" \
+    "\n" \
+    "The `#pragma` directive is the method specified by the C standard for providing additional information to the compiler, beyond what is conveyed in the language itself. The forms specified by the C standard are prefixed with `STDC`. Most GNU-defined pragmas have been given a `GCC` prefix.\n" \
+    "\n" \
+    "C99 introduced the `_Pragma` operator, which addresses a major problem with `#pragma`: being a directive, it cannot be produced as the result of macro expansion. `_Pragma` is an operator that can be embedded in a macro."
 
 #define MAX_DOCS   64
 #define MAX_URI    1024
@@ -298,14 +390,36 @@ static void handle_hover(const char *msg, const char *id)
         p++;
     }
 
-    /* Skip leading whitespace then check for #include */
+    /* Skip leading whitespace then check for a CPP directive.
+     * Longer prefixes are checked before shorter ones to avoid
+     * false prefix matches (e.g. #ifdef before #if). */
     while (*p == ' ' || *p == '\t') p++;
-    if (strncmp(p, "#include", 8) != 0) {
+    if (strncmp(p, "#include", 8) == 0)
+        send_hover_result(id, INCLUDE_DOC);
+    else if (strncmp(p, "#ifndef", 7) == 0)
+        send_hover_result(id, IFNDEF_DOC);
+    else if (strncmp(p, "#ifdef", 6) == 0)
+        send_hover_result(id, IFDEF_DOC);
+    else if (strncmp(p, "#endif", 6) == 0)
+        send_hover_result(id, ENDIF_DOC);
+    else if (strncmp(p, "#elif", 5) == 0)
+        send_hover_result(id, ELIF_DOC);
+    else if (strncmp(p, "#else", 5) == 0)
+        send_hover_result(id, ELSE_DOC);
+    else if (strncmp(p, "#define", 7) == 0)
+        send_hover_result(id, DEFINE_DOC);
+    else if (strncmp(p, "#undef", 6) == 0)
+        send_hover_result(id, UNDEF_DOC);
+    else if (strncmp(p, "#if", 3) == 0)
+        send_hover_result(id, IF_DOC);
+    else if (strncmp(p, "#error", 6) == 0)
+        send_hover_result(id, ERROR_DOC);
+    else if (strncmp(p, "#warning", 8) == 0)
+        send_hover_result(id, WARNING_DOC);
+    else if (strncmp(p, "#pragma", 7) == 0)
+        send_hover_result(id, PRAGMA_DOC);
+    else
         send_null_result(id);
-        return;
-    }
-
-    send_hover_result(id, INCLUDE_DOC);
 }
 
 /* ---------- dispatch ---------- */
