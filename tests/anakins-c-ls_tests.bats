@@ -440,3 +440,17 @@ teardown() {
     lsts_document_symbols "linux/kernel/irq/spurious.c"
     echo "$LSTS_RESPONSE" | jq -e '[.result[] | select(.kind == 14) | .name] | any(. == "POLL_SPURIOUS_IRQ_INTERVAL")' > /dev/null
 }
+
+@test "initialize response declares referencesProvider" {
+    lsts_initialize
+    echo "$LSTS_RESPONSE" | jq -e '.result.capabilities.referencesProvider == true' > /dev/null
+}
+
+@test "textDocument/references finds all call sites of try_one_irq" {
+    lsts_initialize
+    lsts_open "linux/kernel/irq/spurious.c"
+    # try_one_irq is defined on line 28, name at col 13
+    lsts_references "linux/kernel/irq/spurious.c:28:13"
+    # misrouted_irq and poll_spurious_irqs both call try_one_irq
+    echo "$LSTS_RESPONSE" | jq -e '.result | length >= 2' > /dev/null
+}
