@@ -454,3 +454,57 @@ teardown() {
     # misrouted_irq and poll_spurious_irqs both call try_one_irq
     echo "$LSTS_RESPONSE" | jq -e '.result | length >= 2' > /dev/null
 }
+
+# workspace/symbol tests
+@test "initialize response declares workspaceSymbolProvider" {
+    lsts_initialize
+    echo "$LSTS_RESPONSE" | jq -e '.result.capabilities.workspaceSymbolProvider == true' > /dev/null
+}
+
+@test "workspace/symbol returns matching symbols" {
+    lsts_initialize
+    lsts_open "linux/kernel/irq/spurious.c"
+    lsts_request "workspace/symbol" '{"query":"try_one_irq"}'
+    lsts_recv_response
+    echo "$LSTS_RESPONSE" | jq -e '[.result[] | select(.name == "try_one_irq")] | length >= 1' > /dev/null
+}
+
+# textDocument/rename tests
+@test "initialize response declares renameProvider" {
+    lsts_initialize
+    echo "$LSTS_RESPONSE" | jq -e '.result.capabilities.renameProvider == true' > /dev/null
+}
+
+@test "textDocument/rename returns workspace edit" {
+    lsts_initialize
+    lsts_open "linux/kernel/irq/spurious.c"
+    lsts_rename "linux/kernel/irq/spurious.c:28:13" "try_one_interrupt"
+    echo "$LSTS_RESPONSE" | jq -e '.result.changes | keys | length >= 1' > /dev/null
+}
+
+# textDocument/formatting tests
+@test "initialize response declares documentFormattingProvider" {
+    lsts_initialize
+    echo "$LSTS_RESPONSE" | jq -e '.result.capabilities.documentFormattingProvider == true' > /dev/null
+}
+
+@test "textDocument/formatting returns text edits" {
+    lsts_initialize
+    lsts_open "linux/kernel/irq/spurious.c"
+    lsts_formatting "linux/kernel/irq/spurious.c"
+    echo "$LSTS_RESPONSE" | jq -e '.result | type == "array"' > /dev/null
+}
+
+# textDocument/completion tests
+@test "initialize response declares completionProvider" {
+    lsts_initialize
+    echo "$LSTS_RESPONSE" | jq -e '.result.capabilities.completionProvider != null' > /dev/null
+}
+
+@test "textDocument/completion returns items for partial identifier" {
+    lsts_initialize
+    lsts_open "linux/kernel/irq/spurious.c"
+    # "try" prefix should match try_one_irq
+    lsts_completion "linux/kernel/irq/spurious.c:28:4"
+    echo "$LSTS_RESPONSE" | jq -e '.result.items | length >= 1' > /dev/null
+}
