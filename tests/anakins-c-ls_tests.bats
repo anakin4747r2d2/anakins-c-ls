@@ -385,3 +385,44 @@ teardown() {
     echo "$LSTS_RESPONSE" | jq -e '.result.capabilities.documentSymbolProvider == true' > /dev/null
 }
 
+
+@test "initialize response declares callHierarchyProvider" {
+    lsts_initialize
+    echo "$LSTS_RESPONSE" | jq -e '.result.capabilities.callHierarchyProvider == true' > /dev/null
+}
+
+@test "callHierarchy/prepare on function name returns item" {
+    lsts_initialize
+    lsts_open "fixtures/call_hierarchy.c"
+    lsts_call_hierarchy_prepare "fixtures/call_hierarchy.c:3:13"
+    echo "$LSTS_RESPONSE" | jq -e '.result[0].name == "foo"' > /dev/null
+    echo "$LSTS_RESPONSE" | jq -e '.result[0].kind == 12' > /dev/null
+}
+
+@test "callHierarchy/prepare on non-function returns null" {
+    lsts_initialize
+    lsts_open "fixtures/call_hierarchy.c"
+    lsts_call_hierarchy_prepare "fixtures/call_hierarchy.c:1:1"
+    echo "$LSTS_RESPONSE" | jq -e '.result == null' > /dev/null
+}
+
+@test "callHierarchy/incomingCalls returns callers of bar" {
+    lsts_initialize
+    lsts_open "fixtures/call_hierarchy.c"
+    lsts_goto_incoming_calls "fixtures/call_hierarchy.c:1:13"
+    echo "$LSTS_RESPONSE" | jq -e '[.result[].from.name] | sort == ["baz","foo"]' > /dev/null
+}
+
+@test "callHierarchy/outgoingCalls returns calls from foo" {
+    lsts_initialize
+    lsts_open "fixtures/call_hierarchy.c"
+    lsts_goto_outgoing_calls "fixtures/call_hierarchy.c:3:13"
+    echo "$LSTS_RESPONSE" | jq -e '[.result[].to.name] == ["bar"]' > /dev/null
+}
+
+@test "callHierarchy/outgoingCalls returns calls from baz" {
+    lsts_initialize
+    lsts_open "fixtures/call_hierarchy.c"
+    lsts_goto_outgoing_calls "fixtures/call_hierarchy.c:7:13"
+    echo "$LSTS_RESPONSE" | jq -e '([.result[].to.name] | sort) == ["bar","foo"]' > /dev/null
+}

@@ -535,6 +535,7 @@ static void send_initialize_result(const char *id)
              "\"hoverProvider\":true,"
              "\"definitionProvider\":true,"
              "\"documentSymbolProvider\":true,"
+             "\"callHierarchyProvider\":true,"
              "\"textDocumentSync\":{\"openClose\":true}"
              "}}}", id);
     send_message(body);
@@ -1452,6 +1453,382 @@ static void handle_hover(const char *msg, const char *id)
 
 /* ---------- dispatch ---------- */
 
+/* --- callHierarchy helpers --- */
+
+/* Build a JSON CallHierarchyItem into buf (caller ensures space).
+ * fn_node: the function_definition node.
+ * name_node: the identifier node for the function name.
+ * Returns the number of bytes written (not including NUL). */
+static int build_call_hierarchy_item(char *buf, size_t bufsz,
+                                      const char *src, const char *uri,
+                                      TSNode fn_node, TSNode name_node)
+{
+    uint32_t fn_sl, fn_sc, fn_el, fn_ec;
+    uint32_t nm_sl, nm_sc, nm_el, nm_ec;
+    byte_to_line_col(src, ts_node_start_byte(fn_node),   &fn_sl, &fn_sc);
+    byte_to_line_col(src, ts_node_end_byte(fn_node),     &fn_el, &fn_ec);
+    byte_to_line_col(src, ts_node_start_byte(name_node), &nm_sl, &nm_sc);
+    byte_to_line_col(src, ts_node_end_byte(name_node),   &nm_el, &nm_ec);
+
+    uint32_t nlen = ts_node_end_byte(name_node) - ts_node_start_byte(name_node);
+    char name[256];
+    if (nlen >= sizeof(name)) nlen = sizeof(name) - 1;
+    strncpy(name, src + ts_node_start_byte(name_node), nlen);
+    name[nlen] = '\0';
+
+    return snprintf(buf, bufsz,
+        "{\"name\":\"%s\",\"kind\":12,"
+        "\"uri\":\"%s\","
+        "\"range\":{\"start\":{\"line\":%u,\"character\":%u},"
+                    "\"end\":{\"line\":%u,\"character\":%u}},"
+        "\"selectionRange\":{\"start\":{\"line\":%u,\"character\":%u},"
+                             "\"end\":{\"line\":%u,\"character\":%u}},"
+        "\"data\":{\"uri\":\"%s\",\"name\":\"%s\"}}",
+        name, uri,
+        fn_sl, fn_sc, fn_el, fn_ec,
+        nm_sl, nm_sc, nm_el, nm_ec,
+        uri, name);
+}
+
+/* Find the function_definition whose declarator identifier matches `name`.
+ * Returns a null node if not found. */
+static TSNode find_function_def(TSNode root, const char *src,
+                                 const char *name, uint32_t nlen)
+{
+    TSNode null_node;
+    memset(&null_node, 0, sizeof(null_node));
+    if (ts_node_is_null(root)) return null_node;
+    uint32_t nc = ts_node_child_count(root);
+    for (uint32_t i = 0; i < nc; i++) {
+        TSNode ch = ts_node_child(root, i);
+        if (strcmp(ts_node_type(ch), "function_definition") != 0) continue;
+        TSNode decl = ts_node_child_by_field_name(ch, "declarator", 10);
+        while (!ts_node_is_null(decl) &&
+               strcmp(ts_node_type(decl), "function_declarator") != 0)
+            decl = ts_node_child_by_field_name(decl, "declarator", 10);
+        if (ts_node_is_null(decl)) continue;
+        TSNode ident = ts_node_child_by_field_name(decl, "declarator", 10);
+        if (ts_node_is_null(ident)) continue;
+        uint32_t ilen = ts_node_end_byte(ident) - ts_node_start_byte(ident);
+        if (ilen == nlen && strncmp(src + ts_node_start_byte(ident), name, nlen) == 0)
+            return ch;
+    }
+    TSNode null_node2;
+    memset(&null_node2, 0, sizeof(null_node2));
+    return null_node2;
+}
+
+/* --- callHierarchy/prepare --- */
+
+static void handle_call_hierarchy_prepare(const char *msg, const char *id)
+{
+    char uri[MAX_URI];
+    if (!json_get_string(msg, "uri", uri, sizeof(uri))) {
+        send_null_result(id);
+        return;
+    }
+    int line = json_get_int(msg, "line");
+    int character = json_get_int(msg, "character");
+    if (line < 0 || character < 0) { send_null_result(id); return; }
+
+    Doc *d = doc_find(uri);
+    if (!d || !d->text || !d->tree) { send_null_result(id); return; }
+
+    uint32_t byte = 0;
+    const char *p = d->text;
+    for (int ln = 0; ln < line; ln++) {
+        const char *nl = strchr(p, '\n');
+        if (!nl) { send_null_result(id); return; }
+        byte += (uint32_t)(nl - p) + 1;
+        p = nl + 1;
+    }
+    byte += (uint32_t)character;
+
+    TSNode root = ts_tree_root_node(d->tree);
+    TSNode node = ts_node_named_descendant_for_byte_range(root, byte, byte);
+    if (ts_node_is_null(node)) { send_null_result(id); return; }
+
+    /* Must be an identifier that is the name of a function_definition */
+    if (strcmp(ts_node_type(node), "identifier") != 0) {
+        send_null_result(id);
+        return;
+    }
+    TSNode parent = ts_node_parent(node);
+    /* Walk up through pointer/parameter declarators to function_declarator */
+    while (!ts_node_is_null(parent) &&
+           strcmp(ts_node_type(parent), "function_declarator") != 0)
+        parent = ts_node_parent(parent);
+    if (ts_node_is_null(parent)) { send_null_result(id); return; }
+    TSNode fn = ts_node_parent(parent);
+    if (ts_node_is_null(fn) ||
+        strcmp(ts_node_type(fn), "function_definition") != 0) {
+        send_null_result(id);
+        return;
+    }
+
+    char item[2048];
+    build_call_hierarchy_item(item, sizeof(item), d->text, uri, fn, node);
+
+    size_t blen = strlen(item) + 64;
+    char *body = malloc(blen);
+    if (!body) { send_null_result(id); return; }
+    snprintf(body, blen,
+             "{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":[%s]}", id, item);
+    send_message(body);
+    free(body);
+}
+
+/* --- callHierarchy/incomingCalls --- */
+
+/* Walk tree collecting call_expression nodes that call `name`.
+ * Appends entries to *buf, updating *len and *count. */
+static void collect_incoming_calls(TSNode node, const char *src,
+                                    const char *call_name, uint32_t call_nlen,
+                                    const char *uri,
+                                    char **buf, size_t *bufsz,
+                                    size_t *len, int *count)
+{
+    if (ts_node_is_null(node)) return;
+    if (strcmp(ts_node_type(node), "call_expression") == 0) {
+        TSNode fn_child = ts_node_child_by_field_name(node, "function", 8);
+        if (!ts_node_is_null(fn_child)) {
+            uint32_t flen = ts_node_end_byte(fn_child) - ts_node_start_byte(fn_child);
+            if (flen == call_nlen &&
+                strncmp(src + ts_node_start_byte(fn_child), call_name, call_nlen) == 0) {
+                /* Found a call site. Find enclosing function. */
+                /* Find enclosing function by walking up the parent chain */
+                TSNode cur = ts_node_parent(fn_child);
+                TSNode enclosing;
+                memset(&enclosing, 0, sizeof(enclosing));
+                while (!ts_node_is_null(cur)) {
+                    if (strcmp(ts_node_type(cur), "function_definition") == 0) {
+                        enclosing = cur;
+                        break;
+                    }
+                    cur = ts_node_parent(cur);
+                }
+                uint32_t call_sl, call_sc, call_el, call_ec;
+                byte_to_line_col(src, ts_node_start_byte(fn_child), &call_sl, &call_sc);
+                byte_to_line_col(src, ts_node_end_byte(fn_child),   &call_el, &call_ec);
+
+                char from_item[2048];
+                if (!ts_node_is_null(enclosing)) {
+                    /* Get name of enclosing function */
+                    TSNode edecl = ts_node_child_by_field_name(enclosing, "declarator", 10);
+                    while (!ts_node_is_null(edecl) &&
+                           strcmp(ts_node_type(edecl), "function_declarator") != 0)
+                        edecl = ts_node_child_by_field_name(edecl, "declarator", 10);
+                    TSNode eident = ts_node_is_null(edecl) ? enclosing :
+                        ts_node_child_by_field_name(edecl, "declarator", 10);
+                    build_call_hierarchy_item(from_item, sizeof(from_item),
+                                              src, uri, enclosing,
+                                              ts_node_is_null(eident) ? enclosing : eident);
+                } else {
+                    snprintf(from_item, sizeof(from_item),
+                        "{\"name\":\"<file>\",\"kind\":1,"
+                        "\"uri\":\"%s\","
+                        "\"range\":{\"start\":{\"line\":0,\"character\":0},"
+                                   "\"end\":{\"line\":0,\"character\":0}},"
+                        "\"selectionRange\":{\"start\":{\"line\":0,\"character\":0},"
+                                           "\"end\":{\"line\":0,\"character\":0}},"
+                        "\"data\":{\"uri\":\"%s\",\"name\":\"<file>\"}}",
+                        uri, uri);
+                }
+
+                char entry[4096];
+                int elen = snprintf(entry, sizeof(entry),
+                    "{\"from\":%s,"
+                    "\"fromRanges\":[{\"start\":{\"line\":%u,\"character\":%u},"
+                                    "\"end\":{\"line\":%u,\"character\":%u}}]}",
+                    from_item, call_sl, call_sc, call_el, call_ec);
+
+                if (*len + (size_t)elen + 4 > *bufsz) {
+                    *bufsz *= 2;
+                    *buf = realloc(*buf, *bufsz);
+                    if (!*buf) return;
+                }
+                if (*count > 0) { (*buf)[(*len)++] = ','; }
+                memcpy(*buf + *len, entry, elen);
+                *len += elen;
+                (*buf)[*len] = '\0';
+                (*count)++;
+            }
+        }
+    }
+    uint32_t nc = ts_node_named_child_count(node);
+    for (uint32_t i = 0; i < nc; i++)
+        collect_incoming_calls(ts_node_named_child(node, i), src,
+                               call_name, call_nlen, uri, buf, bufsz, len, count);
+}
+
+static void handle_incoming_calls(const char *msg, const char *id)
+{
+    char name[256];
+    if (!json_get_string(msg, "name", name, sizeof(name))) {
+        send_null_result(id);
+        return;
+    }
+    uint32_t nlen = (uint32_t)strlen(name);
+
+    size_t bufsz = 16384;
+    char *buf = malloc(bufsz);
+    if (!buf) { send_null_result(id); return; }
+    buf[0] = '\0';
+    size_t len = 0;
+    int count = 0;
+
+    for (int i = 0; i < MAX_DOCS; i++) {
+        if (!docs[i].uri[0] || !docs[i].text || !docs[i].tree) continue;
+        TSNode root = ts_tree_root_node(docs[i].tree);
+        collect_incoming_calls(root, docs[i].text, name, nlen, docs[i].uri,
+                               &buf, &bufsz, &len, &count);
+    }
+
+    size_t arrlen = len + 4;
+    char *arr = malloc(arrlen);
+    if (!arr) { free(buf); send_null_result(id); return; }
+    snprintf(arr, arrlen, "[%s]", buf);
+    free(buf);
+
+    size_t blen = strlen(arr) + 64;
+    char *body = malloc(blen);
+    if (!body) { free(arr); send_null_result(id); return; }
+    snprintf(body, blen,
+             "{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":%s}", id, arr);
+    free(arr);
+    send_message(body);
+    free(body);
+}
+
+/* --- callHierarchy/outgoingCalls --- */
+
+static void collect_outgoing_calls(TSNode node, TSNode doc_root,
+                                    const char *src,
+                                    const char *uri,
+                                    char **buf, size_t *bufsz,
+                                    size_t *len, int *count)
+{
+    if (ts_node_is_null(node)) return;
+    if (strcmp(ts_node_type(node), "call_expression") == 0) {
+        TSNode fn_child = ts_node_child_by_field_name(node, "function", 8);
+        if (!ts_node_is_null(fn_child) &&
+            strcmp(ts_node_type(fn_child), "identifier") == 0) {
+            uint32_t flen = ts_node_end_byte(fn_child) - ts_node_start_byte(fn_child);
+            char callee_name[256];
+            if (flen >= sizeof(callee_name)) flen = sizeof(callee_name) - 1;
+            strncpy(callee_name, src + ts_node_start_byte(fn_child), flen);
+            callee_name[flen] = '\0';
+
+            uint32_t call_sl, call_sc, call_el, call_ec;
+            byte_to_line_col(src, ts_node_start_byte(fn_child), &call_sl, &call_sc);
+            byte_to_line_col(src, ts_node_end_byte(fn_child),   &call_el, &call_ec);
+
+            /* Try to find the callee's function_definition in the same doc */
+            char to_item[2048];
+            TSNode root = ts_tree_root_node(ts_node_tree(node));
+            TSNode callee_fn = find_function_def(doc_root, src, callee_name, (uint32_t)strlen(callee_name));
+            if (!ts_node_is_null(callee_fn)) {
+                TSNode cdecl = ts_node_child_by_field_name(callee_fn, "declarator", 10);
+                while (!ts_node_is_null(cdecl) &&
+                       strcmp(ts_node_type(cdecl), "function_declarator") != 0)
+                    cdecl = ts_node_child_by_field_name(cdecl, "declarator", 10);
+                TSNode cident = ts_node_is_null(cdecl) ? callee_fn :
+                    ts_node_child_by_field_name(cdecl, "declarator", 10);
+                build_call_hierarchy_item(to_item, sizeof(to_item),
+                                          src, uri, callee_fn,
+                                          ts_node_is_null(cident) ? callee_fn : cident);
+            } else {
+                snprintf(to_item, sizeof(to_item),
+                    "{\"name\":\"%s\",\"kind\":12,"
+                    "\"uri\":\"%s\","
+                    "\"range\":{\"start\":{\"line\":%u,\"character\":%u},"
+                               "\"end\":{\"line\":%u,\"character\":%u}},"
+                    "\"selectionRange\":{\"start\":{\"line\":%u,\"character\":%u},"
+                                       "\"end\":{\"line\":%u,\"character\":%u}},"
+                    "\"data\":{\"uri\":\"%s\",\"name\":\"%s\"}}",
+                    callee_name, uri,
+                    call_sl, call_sc, call_el, call_ec,
+                    call_sl, call_sc, call_el, call_ec,
+                    uri, callee_name);
+            }
+
+            char entry[4096];
+            int elen = snprintf(entry, sizeof(entry),
+                "{\"to\":%s,"
+                "\"fromRanges\":[{\"start\":{\"line\":%u,\"character\":%u},"
+                                "\"end\":{\"line\":%u,\"character\":%u}}]}",
+                to_item, call_sl, call_sc, call_el, call_ec);
+
+            if (*len + (size_t)elen + 4 > *bufsz) {
+                *bufsz *= 2;
+                *buf = realloc(*buf, *bufsz);
+                if (!*buf) return;
+            }
+            if (*count > 0) { (*buf)[(*len)++] = ','; }
+            memcpy(*buf + *len, entry, elen);
+            *len += elen;
+            (*buf)[*len] = '\0';
+            (*count)++;
+        }
+    }
+    uint32_t nc = ts_node_named_child_count(node);
+    for (uint32_t i = 0; i < nc; i++)
+        collect_outgoing_calls(ts_node_named_child(node, i), doc_root, src, uri,
+                               buf, bufsz, len, count);
+}
+
+static void handle_outgoing_calls(const char *msg, const char *id)
+{
+    char name[256];
+    char uri[MAX_URI];
+    if (!json_get_string(msg, "name", name, sizeof(name)) ||
+        !json_get_string(msg, "uri", uri, sizeof(uri))) {
+        send_null_result(id);
+        return;
+    }
+    uint32_t nlen = (uint32_t)strlen(name);
+
+    Doc *d = doc_find(uri);
+    if (!d || !d->text || !d->tree) { send_null_result(id); return; }
+
+    TSNode root = ts_tree_root_node(d->tree);
+    TSNode fn = find_function_def(root, d->text, name, nlen);
+    if (ts_node_is_null(fn)) {
+        /* Return empty array */
+        char body[128];
+        snprintf(body, sizeof(body),
+                 "{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":[]}", id);
+        send_message(body);
+        return;
+    }
+
+    size_t bufsz = 16384;
+    char *buf = malloc(bufsz);
+    if (!buf) { send_null_result(id); return; }
+    buf[0] = '\0';
+    size_t len = 0;
+    int count = 0;
+
+    collect_outgoing_calls(fn, root, d->text, uri, &buf, &bufsz, &len, &count);
+
+    size_t arrlen = len + 4;
+    char *arr = malloc(arrlen);
+    if (!arr) { free(buf); send_null_result(id); return; }
+    snprintf(arr, arrlen, "[%s]", buf);
+    free(buf);
+
+    size_t blen = strlen(arr) + 64;
+    char *body = malloc(blen);
+    if (!body) { free(arr); send_null_result(id); return; }
+    snprintf(body, blen,
+             "{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":%s}", id, arr);
+    free(arr);
+    send_message(body);
+    free(body);
+}
+
+/* ---------- dispatch ---------- */
+
 static int handle_message(const char *msg)
 {
     char method[64];
@@ -1471,6 +1848,12 @@ static int handle_message(const char *msg)
         handle_definition(msg, id);
     } else if (strcmp(method, "textDocument/documentSymbol") == 0) {
         handle_document_symbol(msg, id);
+    } else if (strcmp(method, "callHierarchy/prepare") == 0) {
+        handle_call_hierarchy_prepare(msg, id);
+    } else if (strcmp(method, "callHierarchy/incomingCalls") == 0) {
+        handle_incoming_calls(msg, id);
+    } else if (strcmp(method, "callHierarchy/outgoingCalls") == 0) {
+        handle_outgoing_calls(msg, id);
     } else if (strcmp(method, "shutdown") == 0) {
         send_null_result(id);
     } else if (strcmp(method, "exit") == 0) {
