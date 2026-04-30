@@ -536,6 +536,7 @@ static void send_initialize_result(const char *id)
              "\"definitionProvider\":true,"
              "\"documentSymbolProvider\":true,"
              "\"callHierarchyProvider\":true,"
+             "\"referencesProvider\":true,"
              "\"textDocumentSync\":{\"openClose\":true}"
              "}}}", id);
     send_message(body);
@@ -1827,6 +1828,169 @@ static void handle_outgoing_calls(const char *msg, const char *id)
     free(body);
 }
 
+/* ---------- textDocument/references (via cscope) ---------- */
+
+/* Walk upward from file_path looking for cscope.out */
+static void find_cscope_db(const char *file_path,
+                            char *db_dir, size_t db_dir_sz)
+{
+    char dir[MAX_PATH];
+    strncpy(dir, file_path, MAX_PATH - 1);
+    dir[MAX_PATH - 1] = '\0';
+    char *slash = strrchr(dir, '/');
+    if (slash) *slash = '\0';
+    else       { strncpy(db_dir, ".", db_dir_sz); return; }
+
+    char candidate[MAX_PATH];
+    char best[MAX_PATH];
+    best[0] = '\0';
+    char cur[MAX_PATH];
+    strncpy(cur, dir, MAX_PATH - 1);
+    cur[MAX_PATH - 1] = '\0';
+    for (;;) {
+        snprintf(candidate, sizeof(candidate), "%s/cscope.out", cur);
+        if (access(candidate, F_OK) == 0)
+            strncpy(best, cur, MAX_PATH - 1);
+        char *up = strrchr(cur, '/');
+        if (!up || up == cur) break;
+        *up = '\0';
+    }
+    if (best[0]) strncpy(db_dir, best, db_dir_sz);
+    else         strncpy(db_dir, dir,  db_dir_sz);
+}
+
+static void handle_references(const char *msg, const char *id)
+{
+    char uri[MAX_URI];
+    if (!json_get_string(msg, "uri", uri, sizeof(uri))) {
+        send_null_result(id); return;
+    }
+    int line      = json_get_int(msg, "line");
+    int character = json_get_int(msg, "character");
+    if (line < 0 || character < 0) { send_null_result(id); return; }
+
+    Doc *d = doc_find(uri);
+    if (!d || !d->text || !d->tree) { send_null_result(id); return; }
+
+    uint32_t byte = 0;
+    const char *p = d->text;
+    for (int ln = 0; ln < line; ln++) {
+        const char *nl = strchr(p, '\n');
+        if (!nl) { send_null_result(id); return; }
+        byte += (uint32_t)(nl - p) + 1;
+        p = nl + 1;
+    }
+    byte += (uint32_t)character;
+
+    TSNode root = ts_tree_root_node(d->tree);
+    TSNode node = ts_node_named_descendant_for_byte_range(root, byte, byte);
+    if (ts_node_is_null(node)) { send_null_result(id); return; }
+
+    const char *ntype = ts_node_type(node);
+    if (strcmp(ntype, "identifier")       != 0 &&
+        strcmp(ntype, "type_identifier")  != 0 &&
+        strcmp(ntype, "field_identifier") != 0) {
+        send_null_result(id); return;
+    }
+
+    uint32_t tok_start = ts_node_start_byte(node);
+    uint32_t tok_end   = ts_node_end_byte(node);
+    uint32_t tok_len   = tok_end - tok_start;
+    char ident[256];
+    if (tok_len >= sizeof(ident)) tok_len = sizeof(ident) - 1;
+    strncpy(ident, d->text + tok_start, tok_len);
+    ident[tok_len] = '\0';
+
+    const char *file_path = uri;
+    if (strncmp(file_path, "file://", 7) == 0) file_path += 7;
+
+    char db_dir[MAX_PATH];
+    find_cscope_db(file_path, db_dir, sizeof(db_dir));
+
+    char cscope_out[MAX_PATH];
+    snprintf(cscope_out, sizeof(cscope_out), "%s/cscope.out", db_dir);
+    if (access(cscope_out, F_OK) != 0) {
+        char body[128];
+        snprintf(body, sizeof(body),
+                 "{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":[]}", id);
+        send_message(body);
+        return;
+    }
+
+    /* cscope query type 3 = find all references */
+    char cmd[MAX_PATH * 2 + 256];
+    snprintf(cmd, sizeof(cmd),
+             "cscope -dL -f '%s/cscope.out' -3 '%s' 2>/dev/null",
+             db_dir, ident);
+
+    FILE *fp = popen(cmd, "r");
+    if (!fp) {
+        char body[128];
+        snprintf(body, sizeof(body),
+                 "{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":[]}", id);
+        send_message(body);
+        return;
+    }
+
+    size_t bufsz = 16384;
+    char *locs = malloc(bufsz);
+    if (!locs) { pclose(fp); send_null_result(id); return; }
+    locs[0] = '\0';
+    size_t len = 0;
+    int count = 0;
+
+    char line_buf[4096];
+    while (fgets(line_buf, sizeof(line_buf), fp)) {
+        char ref_file[MAX_PATH], ref_func[256], ref_text[1024];
+        int  ref_line = 0;
+        if (sscanf(line_buf, "%s %s %d %[^\n]",
+                   ref_file, ref_func, &ref_line, ref_text) < 3)
+            continue;
+
+        char ref_uri[MAX_URI];
+        if (ref_file[0] == '/')
+            snprintf(ref_uri, sizeof(ref_uri), "file://%s", ref_file);
+        else
+            snprintf(ref_uri, sizeof(ref_uri), "file://%s/%s", db_dir, ref_file);
+
+        int lsp_line = ref_line > 0 ? ref_line - 1 : 0;
+
+        char entry[MAX_URI + 256];
+        int elen = snprintf(entry, sizeof(entry),
+            "{\"uri\":\"%s\","
+            "\"range\":{\"start\":{\"line\":%d,\"character\":0},"
+                       "\"end\":{\"line\":%d,\"character\":0}}}",
+            ref_uri, lsp_line, lsp_line);
+
+        if (len + (size_t)elen + 4 > bufsz) {
+            bufsz *= 2;
+            locs = realloc(locs, bufsz);
+            if (!locs) { pclose(fp); return; }
+        }
+        if (count > 0) { locs[len++] = ','; }
+        memcpy(locs + len, entry, elen);
+        len += elen;
+        locs[len] = '\0';
+        count++;
+    }
+    pclose(fp);
+
+    size_t arrlen = len + 4;
+    char *arr = malloc(arrlen);
+    if (!arr) { free(locs); send_null_result(id); return; }
+    snprintf(arr, arrlen, "[%s]", locs);
+    free(locs);
+
+    size_t blen = strlen(arr) + 64;
+    char *body = malloc(blen);
+    if (!body) { free(arr); send_null_result(id); return; }
+    snprintf(body, blen,
+             "{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":%s}", id, arr);
+    free(arr);
+    send_message(body);
+    free(body);
+}
+
 /* ---------- dispatch ---------- */
 
 static int handle_message(const char *msg)
@@ -1854,6 +2018,8 @@ static int handle_message(const char *msg)
         handle_incoming_calls(msg, id);
     } else if (strcmp(method, "callHierarchy/outgoingCalls") == 0) {
         handle_outgoing_calls(msg, id);
+    } else if (strcmp(method, "textDocument/references") == 0) {
+        handle_references(msg, id);
     } else if (strcmp(method, "shutdown") == 0) {
         send_null_result(id);
     } else if (strcmp(method, "exit") == 0) {

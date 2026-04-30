@@ -46,6 +46,7 @@
 
           packages = with pkgs; [
             bats
+            cscope
             diffutils
             jq
             shellcheck
