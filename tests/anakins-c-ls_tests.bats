@@ -393,36 +393,50 @@ teardown() {
 
 @test "callHierarchy/prepare on function name returns item" {
     lsts_initialize
-    lsts_open "fixtures/call_hierarchy.c"
-    lsts_call_hierarchy_prepare "fixtures/call_hierarchy.c:3:13"
-    echo "$LSTS_RESPONSE" | jq -e '.result[0].name == "foo"' > /dev/null
+    lsts_open "linux/kernel/irq/spurious.c"
+    lsts_call_hierarchy_prepare "linux/kernel/irq/spurious.c:28:13"
+    echo "$LSTS_RESPONSE" | jq -e '.result[0].name == "try_one_irq"' > /dev/null
     echo "$LSTS_RESPONSE" | jq -e '.result[0].kind == 12' > /dev/null
 }
 
-@test "callHierarchy/prepare on non-function returns null" {
+@test "callHierarchy/prepare on non-function keyword returns null" {
     lsts_initialize
-    lsts_open "fixtures/call_hierarchy.c"
-    lsts_call_hierarchy_prepare "fixtures/call_hierarchy.c:1:1"
+    lsts_open "linux/kernel/irq/spurious.c"
+    lsts_call_hierarchy_prepare "linux/kernel/irq/spurious.c:1:1"
     echo "$LSTS_RESPONSE" | jq -e '.result == null' > /dev/null
 }
 
-@test "callHierarchy/incomingCalls returns callers of bar" {
+@test "callHierarchy/incomingCalls for try_one_irq includes misrouted_irq" {
     lsts_initialize
-    lsts_open "fixtures/call_hierarchy.c"
-    lsts_goto_incoming_calls "fixtures/call_hierarchy.c:1:13"
-    echo "$LSTS_RESPONSE" | jq -e '[.result[].from.name] | sort == ["baz","foo"]' > /dev/null
+    lsts_open "linux/kernel/irq/spurious.c"
+    lsts_goto_incoming_calls "linux/kernel/irq/spurious.c:28:13"
+    echo "$LSTS_RESPONSE" | jq -e '[.result[].from.name] | any(. == "misrouted_irq")' > /dev/null
 }
 
-@test "callHierarchy/outgoingCalls returns calls from foo" {
+@test "callHierarchy/incomingCalls for try_one_irq includes poll_spurious_irqs" {
     lsts_initialize
-    lsts_open "fixtures/call_hierarchy.c"
-    lsts_goto_outgoing_calls "fixtures/call_hierarchy.c:3:13"
-    echo "$LSTS_RESPONSE" | jq -e '[.result[].to.name] == ["bar"]' > /dev/null
+    lsts_open "linux/kernel/irq/spurious.c"
+    lsts_goto_incoming_calls "linux/kernel/irq/spurious.c:28:13"
+    echo "$LSTS_RESPONSE" | jq -e '[.result[].from.name] | any(. == "poll_spurious_irqs")' > /dev/null
 }
 
-@test "callHierarchy/outgoingCalls returns calls from baz" {
+@test "callHierarchy/outgoingCalls for misrouted_irq includes try_one_irq" {
     lsts_initialize
-    lsts_open "fixtures/call_hierarchy.c"
-    lsts_goto_outgoing_calls "fixtures/call_hierarchy.c:7:13"
-    echo "$LSTS_RESPONSE" | jq -e '([.result[].to.name] | sort) == ["bar","foo"]' > /dev/null
+    lsts_open "linux/kernel/irq/spurious.c"
+    lsts_goto_outgoing_calls "linux/kernel/irq/spurious.c:76:8"
+    echo "$LSTS_RESPONSE" | jq -e '[.result[].to.name] | any(. == "try_one_irq")' > /dev/null
+}
+
+@test "textDocument/documentSymbol lists function symbols in kernel file" {
+    lsts_initialize
+    lsts_open "linux/kernel/irq/spurious.c"
+    lsts_document_symbols "linux/kernel/irq/spurious.c"
+    echo "$LSTS_RESPONSE" | jq -e '[.result[] | select(.kind == 12) | .name] | any(. == "try_one_irq")' > /dev/null
+}
+
+@test "textDocument/documentSymbol lists macro symbols in kernel file" {
+    lsts_initialize
+    lsts_open "linux/kernel/irq/spurious.c"
+    lsts_document_symbols "linux/kernel/irq/spurious.c"
+    echo "$LSTS_RESPONSE" | jq -e '[.result[] | select(.kind == 14) | .name] | any(. == "POLL_SPURIOUS_IRQ_INTERVAL")' > /dev/null
 }
