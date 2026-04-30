@@ -380,3 +380,8 @@ teardown() {
         "fixtures/definition_null.rpc.json"
 }
 
+@test "initialize response declares documentSymbolProvider" {
+    lsts_initialize
+    echo "$LSTS_RESPONSE" | jq -e '.result.capabilities.documentSymbolProvider == true' > /dev/null
+}
+

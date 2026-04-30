@@ -528,12 +528,13 @@ static void send_null_result(const char *id)
 
 static void send_initialize_result(const char *id)
 {
-    char body[256];
+    char body[512];
     snprintf(body, sizeof(body),
              "{\"jsonrpc\":\"2.0\",\"id\":%s,"
              "\"result\":{\"capabilities\":{"
              "\"hoverProvider\":true,"
              "\"definitionProvider\":true,"
+             "\"documentSymbolProvider\":true,"
              "\"textDocumentSync\":{\"openClose\":true}"
              "}}}", id);
     send_message(body);
@@ -1097,6 +1098,188 @@ static void handle_definition(const char *msg, const char *id)
     free(arr);
 }
 
+/* Convert a byte offset in src to {line, character} LSP position. */
+static void byte_to_line_col(const char *src, uint32_t byte,
+                              uint32_t *line_out, uint32_t *col_out)
+{
+    uint32_t line = 0, col = 0;
+    for (uint32_t i = 0; i < byte; i++) {
+        if (src[i] == '\n') { line++; col = 0; }
+        else                   col++;
+    }
+    *line_out = line;
+    *col_out  = col;
+}
+
+/* ---------- textDocument/documentSymbol ---------- */
+
+static void collect_symbols(TSNode node, const char *src, const char *uri,
+                             char **buf, size_t *bufsz, size_t *len, int *count)
+{
+    if (ts_node_is_null(node)) return;
+
+    const char *ntype = ts_node_type(node);
+
+    const char *sym_name = NULL;
+    int sym_kind = 0;
+    uint32_t name_start = 0, name_end = 0;
+
+    if (strcmp(ntype, "function_definition") == 0) {
+        TSNode decl = ts_node_child_by_field_name(node, "declarator", 10);
+        while (!ts_node_is_null(decl) &&
+               strcmp(ts_node_type(decl), "function_declarator") != 0) {
+            if (ts_node_named_child_count(decl) == 0) { decl = ts_node_child(node, -1u); break; }
+            decl = ts_node_named_child(decl, 0);
+        }
+        if (!ts_node_is_null(decl) &&
+            strcmp(ts_node_type(decl), "function_declarator") == 0) {
+            TSNode name_node = ts_node_named_child(decl, 0);
+            if (!ts_node_is_null(name_node)) {
+                name_start = ts_node_start_byte(name_node);
+                name_end   = ts_node_end_byte(name_node);
+                sym_name   = src + name_start;
+                sym_kind   = 12;
+            }
+        }
+    } else if (strcmp(ntype, "struct_specifier") == 0 ||
+               strcmp(ntype, "union_specifier") == 0) {
+        TSNode name_node = ts_node_child_by_field_name(node, "name", 4);
+        if (!ts_node_is_null(name_node)) {
+            name_start = ts_node_start_byte(name_node);
+            name_end   = ts_node_end_byte(name_node);
+            sym_name   = src + name_start;
+            sym_kind   = 23;
+        }
+    } else if (strcmp(ntype, "enum_specifier") == 0) {
+        TSNode name_node = ts_node_child_by_field_name(node, "name", 4);
+        if (!ts_node_is_null(name_node)) {
+            name_start = ts_node_start_byte(name_node);
+            name_end   = ts_node_end_byte(name_node);
+            sym_name   = src + name_start;
+            sym_kind   = 10;
+        }
+    } else if (strcmp(ntype, "type_definition") == 0) {
+        uint32_t nc = ts_node_named_child_count(node);
+        if (nc > 0) {
+            TSNode last = ts_node_named_child(node, nc - 1);
+            if (!ts_node_is_null(last)) {
+                name_start = ts_node_start_byte(last);
+                name_end   = ts_node_end_byte(last);
+                sym_name   = src + name_start;
+                sym_kind   = 26;
+            }
+        }
+    } else if (strcmp(ntype, "preproc_def") == 0 ||
+               strcmp(ntype, "preproc_function_def") == 0) {
+        TSNode name_node = ts_node_child_by_field_name(node, "name", 4);
+        if (!ts_node_is_null(name_node)) {
+            name_start = ts_node_start_byte(name_node);
+            name_end   = ts_node_end_byte(name_node);
+            sym_name   = src + name_start;
+            sym_kind   = 14;
+        }
+    } else if (strcmp(ntype, "declaration") == 0) {
+        TSNode par = ts_node_parent(node);
+        if (!ts_node_is_null(par) &&
+            strcmp(ts_node_type(par), "translation_unit") == 0) {
+            TSNode inner = ts_node_named_descendant_for_byte_range(
+                node, ts_node_start_byte(node), ts_node_start_byte(node));
+            while (!ts_node_is_null(inner) &&
+                   strcmp(ts_node_type(inner), "identifier") != 0)
+                inner = ts_node_named_child(inner, 0);
+            if (!ts_node_is_null(inner) &&
+                strcmp(ts_node_type(inner), "identifier") == 0) {
+                name_start = ts_node_start_byte(inner);
+                name_end   = ts_node_end_byte(inner);
+                sym_name   = src + name_start;
+                sym_kind   = 13;
+            }
+        }
+    }
+
+    if (sym_name && sym_kind > 0) {
+        uint32_t n_sl, n_sc, n_el, n_ec;
+        byte_to_line_col(src, ts_node_start_byte(node), &n_sl, &n_sc);
+        byte_to_line_col(src, ts_node_end_byte(node),   &n_el, &n_ec);
+        uint32_t name_len = name_end - name_start;
+
+        size_t needed = name_len + 512;
+        if (*len + needed >= *bufsz) {
+            *bufsz = (*bufsz) * 2 + needed;
+            *buf = realloc(*buf, *bufsz);
+            if (!*buf) return;
+        }
+
+        char *escaped = malloc(name_len * 2 + 4);
+        if (!escaped) return;
+        size_t ei = 0;
+        for (uint32_t k = 0; k < name_len; k++) {
+            char c = sym_name[k];
+            if (c == '"')  { escaped[ei++] = '\\'; escaped[ei++] = '"'; }
+            else if (c == '\\') { escaped[ei++] = '\\'; escaped[ei++] = '\\'; }
+            else escaped[ei++] = c;
+        }
+        escaped[ei] = '\0';
+
+        int written = snprintf(*buf + *len, *bufsz - *len,
+                 "%s{\"name\":\"%s\",\"kind\":%d,"
+                 "\"location\":{\"uri\":\"%s\","
+                 "\"range\":{\"start\":{\"line\":%u,\"character\":%u},"
+                 "\"end\":{\"line\":%u,\"character\":%u}}}}",
+                 *count > 0 ? "," : "",
+                 escaped, sym_kind, uri,
+                 n_sl, n_sc, n_el, n_ec);
+        free(escaped);
+        if (written > 0) *len += (size_t)written;
+        (*count)++;
+    }
+
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++)
+        collect_symbols(ts_node_named_child(node, i), src, uri,
+                        buf, bufsz, len, count);
+}
+
+static void handle_document_symbol(const char *msg, const char *id)
+{
+    char uri[MAX_URI];
+    if (!json_get_string(msg, "uri", uri, sizeof(uri))) {
+        send_null_result(id);
+        return;
+    }
+    Doc *d = doc_find(uri);
+    if (!d || !d->text || !d->tree) {
+        send_null_result(id);
+        return;
+    }
+
+    TSNode root = ts_tree_root_node(d->tree);
+
+    size_t bufsz = 4096;
+    char *syms = malloc(bufsz);
+    if (!syms) { send_null_result(id); return; }
+    syms[0] = '\0';
+    size_t len = 0;
+    int count = 0;
+
+    collect_symbols(root, d->text, uri, &syms, &bufsz, &len, &count);
+
+    size_t arrlen = len + 8;
+    char *arr = malloc(arrlen);
+    if (!arr) { free(syms); send_null_result(id); return; }
+    snprintf(arr, arrlen, "[%s]", syms);
+    free(syms);
+
+    size_t bodysz = arrlen + 128;
+    char *body = malloc(bodysz);
+    if (!body) { free(arr); send_null_result(id); return; }
+    snprintf(body, bodysz,
+             "{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":%s}",
+             id, arr);
+    free(arr);
+    send_message(body);
+    free(body);
+}
+
 static void handle_hover(const char *msg, const char *id)
 {
     char uri[MAX_URI];
@@ -1286,6 +1469,8 @@ static int handle_message(const char *msg)
         handle_hover(msg, id);
     } else if (strcmp(method, "textDocument/definition") == 0) {
         handle_definition(msg, id);
+    } else if (strcmp(method, "textDocument/documentSymbol") == 0) {
+        handle_document_symbol(msg, id);
     } else if (strcmp(method, "shutdown") == 0) {
         send_null_result(id);
     } else if (strcmp(method, "exit") == 0) {
