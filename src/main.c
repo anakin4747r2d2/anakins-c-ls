@@ -373,7 +373,7 @@
 /* ---------- document store ---------- */
 
 static TSParser *parser;
-static char workspace_root[MAX_PATH];
+static char workspace_root[2048]; /* MAX_PATH */
 
 typedef struct {
     char    uri[MAX_URI];
