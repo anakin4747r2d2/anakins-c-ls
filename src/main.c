@@ -566,7 +566,7 @@ static void handle_initialize(const char *msg, const char *id)
 {
     /* Extract rootUri or rootPath to discover the workspace directory */
     char root_uri[MAX_URI] = "";
-    char root_path[MAX_PATH] = "";
+    char root_path[2048] = "";
 
     if (json_get_string(msg, "rootUri", root_uri, sizeof(root_uri))) {
         /* Strip file:// prefix */
@@ -579,7 +579,7 @@ static void handle_initialize(const char *msg, const char *id)
 
     /* Kick off a background cscope build if no database exists yet */
     if (workspace_root[0]) {
-        char db_path[MAX_PATH];
+        char db_path[2048];
         snprintf(db_path, sizeof(db_path), "%s/cscope.out", workspace_root);
         if (access(db_path, F_OK) != 0)
             build_cscope_db(workspace_root);
