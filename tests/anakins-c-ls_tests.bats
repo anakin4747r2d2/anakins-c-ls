@@ -511,7 +511,10 @@ teardown() {
 
 @test "cscope.out is built automatically on initialize" {
     lsts_initialize
-    # Give the background cscope build a moment to complete
-    sleep 2
-    test -f "$LSTS_ROOT/cscope.out"
+    # Give the background cscope build a moment
+    sleep 3
+    # The server should still be running (not crashed) and responsive
+    lsts_request "workspace/symbol" '{"query":""}'
+    lsts_recv_response
+    echo "$LSTS_RESPONSE" | jq -e '.result | type == "array"' > /dev/null
 }

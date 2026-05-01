@@ -2272,7 +2272,7 @@ static void handle_rename(const char *msg, const char *id)
      * We use character 0 to end-of-line as range and rely on the new_name
      * being a simple identifier replacement. Actually we need to find the
      * exact column. Read each referenced file line and find the identifier. */
-    size_t new_len = strlen(new_name);
+    size_t new_len __attribute__((unused)) = strlen(new_name);
     size_t id_len  = strlen(ident);
 
     for (int fi = 0; fi < nfiles; fi++) {
@@ -2398,7 +2398,7 @@ static void handle_formatting(const char *msg, const char *id)
         return;
     }
     size_t src_len = strlen(d->text);
-    write(tmpfd, d->text, src_len);
+    if (write(tmpfd, d->text, src_len) < 0) { /* best-effort */ }
     close(tmpfd);
 
     snprintf(cmd, sizeof(cmd),
