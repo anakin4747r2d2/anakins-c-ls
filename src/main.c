@@ -529,7 +529,7 @@ static void send_null_result(const char *id)
 
 static void send_initialize_result(const char *id)
 {
-    char body[512];
+    char body[1024];
     snprintf(body, sizeof(body),
              "{\"jsonrpc\":\"2.0\",\"id\":%s,"
              "\"result\":{\"capabilities\":{"
