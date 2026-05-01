@@ -2599,7 +2599,7 @@ static int handle_message(const char *msg)
         handle_definition(msg, id);
     } else if (strcmp(method, "textDocument/documentSymbol") == 0) {
         handle_document_symbol(msg, id);
-    } else if (strcmp(method, "callHierarchy/prepare") == 0) {
+    } else if (strcmp(method, "textDocument/prepareCallHierarchy") == 0) {
         handle_call_hierarchy_prepare(msg, id);
     } else if (strcmp(method, "callHierarchy/incomingCalls") == 0) {
         handle_incoming_calls(msg, id);
