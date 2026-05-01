@@ -577,11 +577,15 @@ static void handle_initialize(const char *msg, const char *id)
         strncpy(workspace_root, root_path, sizeof(workspace_root) - 1);
     }
 
-    /* Kick off a background cscope build if no database exists yet */
+    /* Kick off a background cscope build if no database exists yet
+     * and the root looks like a real source tree (has a Makefile or
+     * Kconfig — not a test harness directory). */
     if (workspace_root[0]) {
         char db_path[2048];
+        char makefile_path[2048];
         snprintf(db_path, sizeof(db_path), "%s/cscope.out", workspace_root);
-        if (access(db_path, F_OK) != 0)
+        snprintf(makefile_path, sizeof(makefile_path), "%s/Makefile", workspace_root);
+        if (access(db_path, F_OK) != 0 && access(makefile_path, F_OK) == 0)
             build_cscope_db(workspace_root);
     }
 
