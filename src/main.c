@@ -531,6 +531,7 @@ static void send_null_result(const char *id)
 }
 
 /* Spawn cscope -bRq in dir as a background process. */
+static void send_initialize_result(const char *id); /* forward decl */
 static void build_cscope_db(const char *dir)
 {
     if (!dir || !dir[0]) return;
