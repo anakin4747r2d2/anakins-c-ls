@@ -2,7 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <fcntl.h>
 #include <unistd.h>
+#include <sys/wait.h>
 #include <tree_sitter/api.h>
 #include <tree_sitter/tree-sitter-c.h>
 
@@ -371,6 +373,7 @@
 /* ---------- document store ---------- */
 
 static TSParser *parser;
+static char workspace_root[MAX_PATH];
 
 typedef struct {
     char    uri[MAX_URI];
@@ -525,6 +528,63 @@ static void send_null_result(const char *id)
     snprintf(body, sizeof(body),
              "{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":null}", id);
     send_message(body);
+}
+
+/* Spawn cscope -bRq in dir as a background process. */
+static void build_cscope_db(const char *dir)
+{
+    if (!dir || !dir[0]) return;
+
+    /* Check if cscope is available */
+    if (access("/usr/bin/cscope", X_OK) != 0 &&
+        system("command -v cscope > /dev/null 2>&1") != 0)
+        return;
+
+    pid_t pid = fork();
+    if (pid < 0) return;
+    if (pid == 0) {
+        /* Child: run cscope in the workspace root */
+        if (chdir(dir) != 0) _exit(1);
+        /* Redirect stdout/stderr to /dev/null */
+        int devnull = open("/dev/null", O_WRONLY);
+        if (devnull >= 0) {
+            dup2(devnull, STDOUT_FILENO);
+            dup2(devnull, STDERR_FILENO);
+            close(devnull);
+        }
+        execl("/usr/bin/env", "env", "cscope", "-bRq", (char *)NULL);
+        /* execl failed — try PATH */
+        execlp("cscope", "cscope", "-bRq", (char *)NULL);
+        _exit(1);
+    }
+    /* Parent: don't wait — let it run in background */
+    (void)pid;
+}
+
+static void handle_initialize(const char *msg, const char *id)
+{
+    /* Extract rootUri or rootPath to discover the workspace directory */
+    char root_uri[MAX_URI] = "";
+    char root_path[MAX_PATH] = "";
+
+    if (json_get_string(msg, "rootUri", root_uri, sizeof(root_uri))) {
+        /* Strip file:// prefix */
+        const char *p = root_uri;
+        if (strncmp(p, "file://", 7) == 0) p += 7;
+        strncpy(workspace_root, p, sizeof(workspace_root) - 1);
+    } else if (json_get_string(msg, "rootPath", root_path, sizeof(root_path))) {
+        strncpy(workspace_root, root_path, sizeof(workspace_root) - 1);
+    }
+
+    /* Kick off a background cscope build if no database exists yet */
+    if (workspace_root[0]) {
+        char db_path[MAX_PATH];
+        snprintf(db_path, sizeof(db_path), "%s/cscope.out", workspace_root);
+        if (access(db_path, F_OK) != 0)
+            build_cscope_db(workspace_root);
+    }
+
+    send_initialize_result(id);
 }
 
 static void send_initialize_result(const char *id)
@@ -2590,7 +2650,7 @@ static int handle_message(const char *msg)
     json_get_id(msg, id, sizeof(id));
 
     if (strcmp(method, "initialize") == 0) {
-        send_initialize_result(id);
+        handle_initialize(msg, id);
     } else if (strcmp(method, "textDocument/didOpen") == 0) {
         handle_did_open(msg);
     } else if (strcmp(method, "textDocument/hover") == 0) {
