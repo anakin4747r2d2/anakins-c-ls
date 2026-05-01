@@ -423,7 +423,7 @@ teardown() {
 @test "callHierarchy/outgoingCalls for misrouted_irq includes try_one_irq" {
     lsts_initialize
     lsts_open "linux/kernel/irq/spurious.c"
-    lsts_goto_outgoing_calls "linux/kernel/irq/spurious.c:76:8"
+    lsts_goto_outgoing_calls "linux/kernel/irq/spurious.c:80:12"
     echo "$LSTS_RESPONSE" | jq -e '[.result[].to.name] | any(. == "try_one_irq")' > /dev/null
 }
 
