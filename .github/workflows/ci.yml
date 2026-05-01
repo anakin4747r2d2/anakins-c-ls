@@ -24,7 +24,11 @@ jobs:
           git -C tests/linux config core.sparseCheckout true
           mkdir -p tests/linux/.git/info
           cat > tests/linux/.git/info/sparse-checkout << 'EOF'
-          arch/
+          arch/arm/kernel/unwind.c
+          arch/arm/lib/xor-neon.c
+          arch/arm/mach-exynos/platsmp.c
+          arch/parisc/kernel/
+          arch/powerpc/kvm/book3s_paired_singles.c
           crypto/shash.c
           drivers/gpio/gpio-amd8111.c
           include/
