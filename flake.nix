@@ -46,6 +46,7 @@
 
           packages = with pkgs; [
             bats
+            clang-tools
             cscope
             diffutils
             jq

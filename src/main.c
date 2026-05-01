@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <unistd.h>
 #include <tree_sitter/api.h>
 #include <tree_sitter/tree-sitter-c.h>
@@ -537,6 +538,10 @@ static void send_initialize_result(const char *id)
              "\"documentSymbolProvider\":true,"
              "\"callHierarchyProvider\":true,"
              "\"referencesProvider\":true,"
+             "\"workspaceSymbolProvider\":true,"
+             "\"renameProvider\":true,"
+             "\"documentFormattingProvider\":true,"
+             "\"completionProvider\":{},"
              "\"textDocumentSync\":{\"openClose\":true}"
              "}}}", id);
     send_message(body);
@@ -1726,7 +1731,6 @@ static void collect_outgoing_calls(TSNode node, TSNode doc_root,
 
             /* Try to find the callee's function_definition in the same doc */
             char to_item[2048];
-            TSNode root = ts_tree_root_node(ts_node_tree(node));
             TSNode callee_fn = find_function_def(doc_root, src, callee_name, (uint32_t)strlen(callee_name));
             if (!ts_node_is_null(callee_fn)) {
                 TSNode cdecl = ts_node_child_by_field_name(callee_fn, "declarator", 10);
@@ -1991,6 +1995,589 @@ static void handle_references(const char *msg, const char *id)
     free(body);
 }
 
+/* ---------- workspace/symbol ---------- */
+
+static void handle_workspace_symbol(const char *msg, const char *id)
+{
+    char query[256] = "";
+    json_get_string(msg, "query", query, sizeof(query));
+
+    /* Lowercase query for case-insensitive match */
+    char lquery[256];
+    for (int i = 0; query[i]; i++)
+        lquery[i] = (char)tolower((unsigned char)query[i]);
+    lquery[strlen(query)] = '\0';
+
+    size_t bufsz = 32768;
+    char *buf = malloc(bufsz);
+    if (!buf) { send_null_result(id); return; }
+    buf[0] = '\0';
+    size_t len = 0;
+    int count = 0;
+
+    for (int i = 0; i < MAX_DOCS; i++) {
+        if (!docs[i].uri[0] || !docs[i].text || !docs[i].tree) continue;
+        TSNode root = ts_tree_root_node(docs[i].tree);
+        /* Reuse collect_symbols but filter here */
+        size_t sym_bufsz = 16384;
+        char *sym_buf = malloc(sym_bufsz);
+        if (!sym_buf) continue;
+        sym_buf[0] = '\0';
+        size_t sym_len = 0;
+        int sym_count = 0;
+        collect_symbols(root, docs[i].text, docs[i].uri,
+                        &sym_buf, &sym_bufsz, &sym_len, &sym_count);
+
+        /* sym_buf is a comma-separated list of SymbolInformation JSON objects.
+         * We need to filter by name. Parse each object naively. */
+        char *p = sym_buf;
+        while (*p) {
+            /* Find start of object */
+            if (*p != '{') { p++; continue; }
+            /* Find matching end brace (no nesting beyond one level in our output) */
+            char *start = p;
+            int depth = 0;
+            while (*p) {
+                if (*p == '{') depth++;
+                else if (*p == '}') { depth--; if (depth == 0) { p++; break; } }
+                p++;
+            }
+            size_t obj_len = (size_t)(p - start);
+            /* Skip comma */
+            if (*p == ',') p++;
+
+            /* Extract name from this object */
+            char obj[4096];
+            if (obj_len >= sizeof(obj)) obj_len = sizeof(obj) - 1;
+            strncpy(obj, start, obj_len);
+            obj[obj_len] = '\0';
+
+            char sym_name[256] = "";
+            json_get_string(obj, "name", sym_name, sizeof(sym_name));
+
+            /* Filter: if query non-empty, name must contain query (case-insensitive) */
+            int match = 1;
+            if (lquery[0]) {
+                char lname[256];
+                for (int j = 0; sym_name[j]; j++)
+                    lname[j] = (char)tolower((unsigned char)sym_name[j]);
+                lname[strlen(sym_name)] = '\0';
+                match = (strstr(lname, lquery) != NULL);
+            }
+
+            if (match) {
+                if (len + obj_len + 4 > bufsz) {
+                    bufsz *= 2;
+                    buf = realloc(buf, bufsz);
+                    if (!buf) { free(sym_buf); return; }
+                }
+                if (count > 0) { buf[len++] = ','; }
+                memcpy(buf + len, obj, obj_len);
+                len += obj_len;
+                buf[len] = '\0';
+                count++;
+            }
+        }
+        free(sym_buf);
+    }
+
+    size_t arrlen = len + 4;
+    char *arr = malloc(arrlen);
+    if (!arr) { free(buf); send_null_result(id); return; }
+    snprintf(arr, arrlen, "[%s]", buf);
+    free(buf);
+
+    size_t blen = strlen(arr) + 64;
+    char *body = malloc(blen);
+    if (!body) { free(arr); send_null_result(id); return; }
+    snprintf(body, blen,
+             "{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":%s}", id, arr);
+    free(arr);
+    send_message(body);
+    free(body);
+}
+
+/* ---------- textDocument/rename ---------- */
+
+static void handle_rename(const char *msg, const char *id)
+{
+    char uri[MAX_URI];
+    if (!json_get_string(msg, "uri", uri, sizeof(uri))) {
+        send_null_result(id); return;
+    }
+    int line      = json_get_int(msg, "line");
+    int character = json_get_int(msg, "character");
+    char new_name[256] = "";
+    if (!json_get_string(msg, "newName", new_name, sizeof(new_name)) ||
+        line < 0 || character < 0) {
+        send_null_result(id); return;
+    }
+
+    Doc *d = doc_find(uri);
+    if (!d || !d->text || !d->tree) { send_null_result(id); return; }
+
+    /* Extract identifier at cursor */
+    uint32_t byte = 0;
+    const char *p = d->text;
+    for (int ln = 0; ln < line; ln++) {
+        const char *nl = strchr(p, '\n');
+        if (!nl) { send_null_result(id); return; }
+        byte += (uint32_t)(nl - p) + 1;
+        p = nl + 1;
+    }
+    byte += (uint32_t)character;
+
+    TSNode root = ts_tree_root_node(d->tree);
+    TSNode node = ts_node_named_descendant_for_byte_range(root, byte, byte);
+    if (ts_node_is_null(node)) { send_null_result(id); return; }
+
+    const char *ntype = ts_node_type(node);
+    if (strcmp(ntype, "identifier")       != 0 &&
+        strcmp(ntype, "type_identifier")  != 0 &&
+        strcmp(ntype, "field_identifier") != 0) {
+        send_null_result(id); return;
+    }
+
+    uint32_t tok_start = ts_node_start_byte(node);
+    uint32_t tok_end   = ts_node_end_byte(node);
+    uint32_t tok_len   = tok_end - tok_start;
+    char ident[256];
+    if (tok_len >= sizeof(ident)) tok_len = sizeof(ident) - 1;
+    strncpy(ident, d->text + tok_start, tok_len);
+    ident[tok_len] = '\0';
+
+    const char *file_path = uri;
+    if (strncmp(file_path, "file://", 7) == 0) file_path += 7;
+
+    char db_dir[MAX_PATH];
+    find_cscope_db(file_path, db_dir, sizeof(db_dir));
+
+    /* Build list of locations from cscope, then group by URI for WorkspaceEdit */
+    char cmd[MAX_PATH * 2 + 256];
+    snprintf(cmd, sizeof(cmd),
+             "cscope -dL -f '%s/cscope.out' -3 '%s' 2>/dev/null",
+             db_dir, ident);
+
+    /* We'll build the WorkspaceEdit changes object.
+     * Format: {"uri1":[edits...],"uri2":[edits...]} */
+    size_t changes_bufsz = 65536;
+    char *changes = malloc(changes_bufsz);
+    if (!changes) { send_null_result(id); return; }
+    changes[0] = '\0';
+    size_t changes_len = 0;
+    int changes_count = 0;
+
+    /* Accumulate edits per file using a simple array */
+    typedef struct { char uri[MAX_URI]; int lines[512]; int count; } FileEdits;
+    FileEdits *files = calloc(256, sizeof(FileEdits));
+    if (!files) { free(changes); send_null_result(id); return; }
+    int nfiles = 0;
+
+    char cscope_out_path[MAX_PATH];
+    snprintf(cscope_out_path, sizeof(cscope_out_path), "%s/cscope.out", db_dir);
+    if (access(cscope_out_path, F_OK) == 0) {
+        FILE *fp = popen(cmd, "r");
+        if (fp) {
+            char line_buf[4096];
+            while (fgets(line_buf, sizeof(line_buf), fp)) {
+                char ref_file[MAX_PATH], ref_func[256], ref_text[1024];
+                int  ref_line = 0;
+                if (sscanf(line_buf, "%s %s %d %[^\n]",
+                           ref_file, ref_func, &ref_line, ref_text) < 3)
+                    continue;
+                char ref_uri[MAX_URI];
+                if (ref_file[0] == '/')
+                    snprintf(ref_uri, sizeof(ref_uri), "file://%s", ref_file);
+                else
+                    snprintf(ref_uri, sizeof(ref_uri), "file://%s/%s", db_dir, ref_file);
+
+                /* Find or create file entry */
+                int fi = -1;
+                for (int k = 0; k < nfiles; k++)
+                    if (strcmp(files[k].uri, ref_uri) == 0) { fi = k; break; }
+                if (fi < 0 && nfiles < 256) {
+                    fi = nfiles++;
+                    strncpy(files[fi].uri, ref_uri, MAX_URI - 1);
+                    files[fi].count = 0;
+                }
+                if (fi >= 0 && files[fi].count < 512)
+                    files[fi].lines[files[fi].count++] = ref_line - 1;
+            }
+            pclose(fp);
+        }
+    }
+
+    /* Build changes JSON: for each file, for each line, create a TextEdit.
+     * We use character 0 to end-of-line as range and rely on the new_name
+     * being a simple identifier replacement. Actually we need to find the
+     * exact column. Read each referenced file line and find the identifier. */
+    size_t new_len = strlen(new_name);
+    size_t id_len  = strlen(ident);
+
+    for (int fi = 0; fi < nfiles; fi++) {
+        /* Read the file */
+        const char *fpath = files[fi].uri;
+        if (strncmp(fpath, "file://", 7) == 0) fpath += 7;
+        char *fsrc = read_file(fpath);
+
+        char edits_buf[65536];
+        size_t edits_len = 0;
+        int edits_count = 0;
+
+        for (int ei = 0; ei < files[fi].count; ei++) {
+            int lsp_line = files[fi].lines[ei];
+            /* Find the identifier on this line */
+            int col = 0;
+            if (fsrc) {
+                const char *lp = fsrc;
+                for (int ln = 0; ln < lsp_line && *lp; ln++) {
+                    const char *nl = strchr(lp, '\n');
+                    if (!nl) { lp = NULL; break; }
+                    lp = nl + 1;
+                }
+                if (lp) {
+                    const char *found = strstr(lp, ident);
+                    if (found) col = (int)(found - lp);
+                }
+            }
+
+            char edit[1024];
+            int elen = snprintf(edit, sizeof(edit),
+                "{\"range\":{\"start\":{\"line\":%d,\"character\":%d},"
+                            "\"end\":{\"line\":%d,\"character\":%d}},"
+                "\"newText\":\"%s\"}",
+                lsp_line, col,
+                lsp_line, col + (int)id_len,
+                new_name);
+
+            if (edits_len + (size_t)elen + 4 < sizeof(edits_buf)) {
+                if (edits_count > 0) edits_buf[edits_len++] = ',';
+                memcpy(edits_buf + edits_len, edit, elen);
+                edits_len += elen;
+                edits_buf[edits_len] = '\0';
+                edits_count++;
+            }
+        }
+        free(fsrc);
+
+        /* Append to changes */
+        char entry[MAX_URI + 70000];
+        int elen2 = snprintf(entry, sizeof(entry),
+            "\"%s\":[%s]", files[fi].uri, edits_buf);
+        if (changes_len + (size_t)elen2 + 4 > changes_bufsz) {
+            changes_bufsz *= 2;
+            changes = realloc(changes, changes_bufsz);
+            if (!changes) { free(files); return; }
+        }
+        if (changes_count > 0) { changes[changes_len++] = ','; }
+        memcpy(changes + changes_len, entry, elen2);
+        changes_len += elen2;
+        changes[changes_len] = '\0';
+        changes_count++;
+    }
+    free(files);
+
+    size_t blen = changes_len + 128;
+    char *body = malloc(blen);
+    if (!body) { free(changes); send_null_result(id); return; }
+    snprintf(body, blen,
+             "{\"jsonrpc\":\"2.0\",\"id\":%s,"
+             "\"result\":{\"changes\":{%s}}}",
+             id, changes);
+    free(changes);
+    send_message(body);
+    free(body);
+}
+
+/* ---------- textDocument/formatting ---------- */
+
+static void handle_formatting(const char *msg, const char *id)
+{
+    char uri[MAX_URI];
+    if (!json_get_string(msg, "uri", uri, sizeof(uri))) {
+        send_null_result(id); return;
+    }
+
+    Doc *d = doc_find(uri);
+    if (!d || !d->text) { send_null_result(id); return; }
+
+    const char *file_path = uri;
+    if (strncmp(file_path, "file://", 7) == 0) file_path += 7;
+
+    /* Get just the filename for --assume-filename */
+    const char *fname = strrchr(file_path, '/');
+    fname = fname ? fname + 1 : file_path;
+
+    /* Pipe text through clang-format */
+    char cmd[512];
+    snprintf(cmd, sizeof(cmd),
+             "clang-format --assume-filename='%s' 2>/dev/null", fname);
+
+    FILE *fp = popen(cmd, "r+");
+    if (!fp) {
+        /* clang-format not available — return empty array */
+        char body[128];
+        snprintf(body, sizeof(body),
+                 "{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":[]}", id);
+        send_message(body);
+        return;
+    }
+    /* We can't do r+ with popen — use a temp file approach */
+    pclose(fp);
+
+    /* Write doc text to a temp file, run clang-format on it */
+    char tmpfile[64];
+    snprintf(tmpfile, sizeof(tmpfile), "/tmp/anakins-c-ls-fmt-XXXXXX");
+    int tmpfd = mkstemp(tmpfile);
+    if (tmpfd < 0) {
+        char body[128];
+        snprintf(body, sizeof(body),
+                 "{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":[]}", id);
+        send_message(body);
+        return;
+    }
+    size_t src_len = strlen(d->text);
+    write(tmpfd, d->text, src_len);
+    close(tmpfd);
+
+    snprintf(cmd, sizeof(cmd),
+             "clang-format --assume-filename='%s' '%s' 2>/dev/null",
+             fname, tmpfile);
+    fp = popen(cmd, "r");
+    unlink(tmpfile);
+    if (!fp) {
+        char body[128];
+        snprintf(body, sizeof(body),
+                 "{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":[]}", id);
+        send_message(body);
+        return;
+    }
+
+    /* Read formatted output */
+    size_t out_bufsz = src_len + 65536;
+    char *out = malloc(out_bufsz);
+    if (!out) { pclose(fp); send_null_result(id); return; }
+    size_t out_len = 0;
+    char fbuf[4096];
+    size_t n;
+    while ((n = fread(fbuf, 1, sizeof(fbuf), fp)) > 0) {
+        if (out_len + n + 1 > out_bufsz) {
+            out_bufsz *= 2;
+            out = realloc(out, out_bufsz);
+            if (!out) { pclose(fp); return; }
+        }
+        memcpy(out + out_len, fbuf, n);
+        out_len += n;
+    }
+    out[out_len] = '\0';
+    pclose(fp);
+
+    if (out_len == 0) {
+        free(out);
+        char body[128];
+        snprintf(body, sizeof(body),
+                 "{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":[]}", id);
+        send_message(body);
+        return;
+    }
+
+    /* Count lines in original to build the end position */
+    uint32_t end_line = 0;
+    uint32_t end_char = 0;
+    for (size_t i = 0; i < src_len; i++) {
+        if (d->text[i] == '\n') { end_line++; end_char = 0; }
+        else end_char++;
+    }
+
+    /* JSON-escape the formatted output */
+    size_t esc_bufsz = out_len * 2 + 64;
+    char *esc = malloc(esc_bufsz);
+    if (!esc) { free(out); send_null_result(id); return; }
+    size_t esc_len = 0;
+    for (size_t i = 0; i < out_len && esc_len + 4 < esc_bufsz; i++) {
+        unsigned char ch = (unsigned char)out[i];
+        if (ch == '"')       { esc[esc_len++] = '\\'; esc[esc_len++] = '"'; }
+        else if (ch == '\\') { esc[esc_len++] = '\\'; esc[esc_len++] = '\\'; }
+        else if (ch == '\n') { esc[esc_len++] = '\\'; esc[esc_len++] = 'n'; }
+        else if (ch == '\r') { esc[esc_len++] = '\\'; esc[esc_len++] = 'r'; }
+        else if (ch == '\t') { esc[esc_len++] = '\\'; esc[esc_len++] = 't'; }
+        else                  { esc[esc_len++] = (char)ch; }
+    }
+    esc[esc_len] = '\0';
+    free(out);
+
+    size_t blen = esc_len + 256;
+    char *body = malloc(blen);
+    if (!body) { free(esc); send_null_result(id); return; }
+    snprintf(body, blen,
+        "{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":[{"
+        "\"range\":{\"start\":{\"line\":0,\"character\":0},"
+                   "\"end\":{\"line\":%u,\"character\":%u}},"
+        "\"newText\":\"%s\""
+        "}]}",
+        id, end_line, end_char, esc);
+    free(esc);
+    send_message(body);
+    free(body);
+}
+
+/* ---------- textDocument/completion ---------- */
+
+typedef struct {
+    char  name[256];
+    int   kind;  /* LSP CompletionItemKind */
+} CompletionItem;
+
+static int collect_completions(TSNode node, const char *src,
+                                const char *prefix, size_t prefix_len,
+                                CompletionItem *items, int max_items, int *count)
+{
+    if (ts_node_is_null(node) || *count >= max_items) return *count;
+    const char *ntype = ts_node_type(node);
+
+    int kind = 0;
+    TSNode name_node;
+    memset(&name_node, 0, sizeof(name_node));
+
+    if (strcmp(ntype, "function_definition") == 0) {
+        kind = 3; /* Function */
+        TSNode decl = ts_node_child_by_field_name(node, "declarator", 10);
+        while (!ts_node_is_null(decl) &&
+               strcmp(ts_node_type(decl), "function_declarator") != 0)
+            decl = ts_node_child_by_field_name(decl, "declarator", 10);
+        if (!ts_node_is_null(decl))
+            name_node = ts_node_child_by_field_name(decl, "declarator", 10);
+    } else if (strcmp(ntype, "declaration") == 0) {
+        kind = 6; /* Variable */
+        /* Look for the declarator identifier */
+        TSNode decl = ts_node_child_by_field_name(node, "declarator", 10);
+        while (!ts_node_is_null(decl) &&
+               strcmp(ts_node_type(decl), "identifier") != 0) {
+            TSNode inner = ts_node_child_by_field_name(decl, "declarator", 10);
+            if (ts_node_is_null(inner)) break;
+            decl = inner;
+        }
+        if (!ts_node_is_null(decl) &&
+            strcmp(ts_node_type(decl), "identifier") == 0)
+            name_node = decl;
+    } else if (strcmp(ntype, "preproc_def") == 0 ||
+               strcmp(ntype, "preproc_function_def") == 0) {
+        kind = 21; /* Constant */
+        name_node = ts_node_child_by_field_name(node, "name", 4);
+    } else if (strcmp(ntype, "type_definition") == 0) {
+        kind = 25; /* TypeParameter */
+        /* Find the last declarator which holds the alias name */
+        uint32_t nc = ts_node_named_child_count(node);
+        if (nc > 0) name_node = ts_node_named_child(node, nc - 1);
+    }
+
+    if (kind && !ts_node_is_null(name_node) &&
+        (strcmp(ts_node_type(name_node), "identifier") == 0 ||
+         strcmp(ts_node_type(name_node), "type_identifier") == 0)) {
+        uint32_t ns = ts_node_start_byte(name_node);
+        uint32_t ne = ts_node_end_byte(name_node);
+        uint32_t nlen = ne - ns;
+        if (nlen >= prefix_len &&
+            strncmp(src + ns, prefix, prefix_len) == 0) {
+            /* Dedup: skip if already in items */
+            int dup = 0;
+            char cname[256];
+            if (nlen >= sizeof(cname)) nlen = sizeof(cname) - 1;
+            strncpy(cname, src + ns, nlen);
+            cname[nlen] = '\0';
+            for (int k = 0; k < *count; k++)
+                if (strcmp(items[k].name, cname) == 0) { dup = 1; break; }
+            if (!dup && *count < max_items) {
+                strncpy(items[*count].name, cname, 255);
+                items[*count].kind = kind;
+                (*count)++;
+            }
+        }
+    }
+
+    uint32_t nc = ts_node_named_child_count(node);
+    for (uint32_t i = 0; i < nc && *count < max_items; i++)
+        collect_completions(ts_node_named_child(node, i), src,
+                            prefix, prefix_len, items, max_items, count);
+    return *count;
+}
+
+static void handle_completion(const char *msg, const char *id)
+{
+    char uri[MAX_URI];
+    if (!json_get_string(msg, "uri", uri, sizeof(uri))) {
+        send_null_result(id); return;
+    }
+    int line      = json_get_int(msg, "line");
+    int character = json_get_int(msg, "character");
+    if (line < 0 || character < 0) { send_null_result(id); return; }
+
+    Doc *d = doc_find(uri);
+    if (!d || !d->text || !d->tree) { send_null_result(id); return; }
+
+    /* Find partial identifier: walk back from cursor */
+    uint32_t byte = 0;
+    const char *p = d->text;
+    for (int ln = 0; ln < line; ln++) {
+        const char *nl = strchr(p, '\n');
+        if (!nl) { send_null_result(id); return; }
+        byte += (uint32_t)(nl - p) + 1;
+        p = nl + 1;
+    }
+    byte += (uint32_t)character;
+
+    uint32_t prefix_start = byte;
+    while (prefix_start > 0) {
+        unsigned char ch = (unsigned char)d->text[prefix_start - 1];
+        if (!isalnum(ch) && ch != '_') break;
+        prefix_start--;
+    }
+    uint32_t prefix_len = byte - prefix_start;
+    const char *prefix  = d->text + prefix_start;
+
+    CompletionItem *items = calloc(512, sizeof(CompletionItem));
+    if (!items) { send_null_result(id); return; }
+    int count = 0;
+
+    TSNode root = ts_tree_root_node(d->tree);
+    collect_completions(root, d->text, prefix, prefix_len, items, 512, &count);
+
+    /* Build JSON CompletionList */
+    size_t bufsz = count * 512 + 256;
+    char *buf = malloc(bufsz);
+    if (!buf) { free(items); send_null_result(id); return; }
+    size_t len = 0;
+    buf[0] = '\0';
+
+    for (int i = 0; i < count; i++) {
+        char entry[512];
+        int elen = snprintf(entry, sizeof(entry),
+            "{\"label\":\"%s\",\"kind\":%d}",
+            items[i].name, items[i].kind);
+        if (len + (size_t)elen + 4 > bufsz) {
+            bufsz *= 2;
+            buf = realloc(buf, bufsz);
+            if (!buf) { free(items); return; }
+        }
+        if (i > 0) { buf[len++] = ','; }
+        memcpy(buf + len, entry, elen);
+        len += elen;
+        buf[len] = '\0';
+    }
+    free(items);
+
+    size_t blen = len + 256;
+    char *body = malloc(blen);
+    if (!body) { free(buf); send_null_result(id); return; }
+    snprintf(body, blen,
+             "{\"jsonrpc\":\"2.0\",\"id\":%s,"
+             "\"result\":{\"isIncomplete\":false,\"items\":[%s]}}",
+             id, buf);
+    free(buf);
+    send_message(body);
+    free(body);
+}
+
 /* ---------- dispatch ---------- */
 
 static int handle_message(const char *msg)
@@ -2020,6 +2607,14 @@ static int handle_message(const char *msg)
         handle_outgoing_calls(msg, id);
     } else if (strcmp(method, "textDocument/references") == 0) {
         handle_references(msg, id);
+    } else if (strcmp(method, "workspace/symbol") == 0) {
+        handle_workspace_symbol(msg, id);
+    } else if (strcmp(method, "textDocument/rename") == 0) {
+        handle_rename(msg, id);
+    } else if (strcmp(method, "textDocument/formatting") == 0) {
+        handle_formatting(msg, id);
+    } else if (strcmp(method, "textDocument/completion") == 0) {
+        handle_completion(msg, id);
     } else if (strcmp(method, "shutdown") == 0) {
         send_null_result(id);
     } else if (strcmp(method, "exit") == 0) {
