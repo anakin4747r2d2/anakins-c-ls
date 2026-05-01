@@ -24,19 +24,10 @@ jobs:
           git -C tests/linux config core.sparseCheckout true
           mkdir -p tests/linux/.git/info
           cat > tests/linux/.git/info/sparse-checkout << 'EOF'
-          arch/arm/kernel/unwind.c
-          arch/arm/lib/xor-neon.c
-          arch/arm/mach-exynos/platsmp.c
-          arch/parisc/kernel/asm-offsets.c
-          arch/parisc/kernel/parisc_ksyms.c
-          arch/parisc/kernel/ptrace.c
-          arch/parisc/kernel/smp.c
-          arch/parisc/kernel/traps.c
-          arch/powerpc/kvm/book3s_paired_singles.c
+          arch/
           crypto/shash.c
           drivers/gpio/gpio-amd8111.c
-          include/linux/irq.h
-          include/linux/irqdesc.h
+          include/
           kernel/debug/kdb/kdb_io.c
           kernel/irq/
           kernel/sched/core.c
@@ -51,6 +42,9 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@v14
 
       - uses: DeterminateSystems/magic-nix-cache-action@v8
+
+      - name: Build cscope database for tests
+        run: nix develop --command bash -c 'cd tests/linux && cscope -bRq'
 
       - name: Build and test
         run: make all
