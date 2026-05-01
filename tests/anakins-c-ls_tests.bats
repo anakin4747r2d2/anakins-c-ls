@@ -508,3 +508,10 @@ teardown() {
     lsts_completion "linux/kernel/irq/spurious.c:28:4"
     echo "$LSTS_RESPONSE" | jq -e '.result.items | length >= 1' > /dev/null
 }
+
+@test "cscope.out is built automatically on initialize" {
+    lsts_initialize
+    # Give the background cscope build a moment to complete
+    sleep 2
+    test -f "$LSTS_ROOT/cscope.out"
+}
