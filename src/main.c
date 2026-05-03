@@ -398,8 +398,7 @@ static void doc_store(const char *uri, const char *text)
     if (!d) {
         if (ndocs >= MAX_DOCS) return;
         d = &docs[ndocs++];
-        strncpy(d->uri, uri, MAX_URI - 1);
-        d->uri[MAX_URI - 1] = '\0';
+        snprintf(d->uri, MAX_URI, "%s", uri);
         d->text = NULL;
         d->tree = NULL;
     }
@@ -572,17 +571,17 @@ static void handle_initialize(const char *msg, const char *id)
         /* Strip file:// prefix */
         const char *p = root_uri;
         if (strncmp(p, "file://", 7) == 0) p += 7;
-        strncpy(workspace_root, p, sizeof(workspace_root) - 1);
+        snprintf(workspace_root, sizeof(workspace_root), "%s", p);
     } else if (json_get_string(msg, "rootPath", root_path, sizeof(root_path))) {
-        strncpy(workspace_root, root_path, sizeof(workspace_root) - 1);
+        snprintf(workspace_root, sizeof(workspace_root), "%s", root_path);
     }
 
     /* Kick off a background cscope build if no database exists yet
      * and the root looks like a real source tree (has a Makefile or
      * Kconfig — not a test harness directory). */
     if (workspace_root[0]) {
-        char db_path[2048];
-        char makefile_path[2048];
+        char db_path[MAX_PATH + 16];
+        char makefile_path[MAX_PATH + 16];
         snprintf(db_path, sizeof(db_path), "%s/cscope.out", workspace_root);
         snprintf(makefile_path, sizeof(makefile_path), "%s/Makefile", workspace_root);
         if (access(db_path, F_OK) != 0 && access(makefile_path, F_OK) == 0)
@@ -979,7 +978,7 @@ static void search_header(const char *header_path, const char *header_src,
                           char *buf, size_t bufsz, int *count)
 {
     /* Build a file:// URI for the header */
-    char huri[MAX_URI];
+    char huri[MAX_PATH + 8];
     snprintf(huri, sizeof(huri), "file://%s", header_path);
     collect_definitions(header_root, header_src, ident, ident_len,
                         kind, huri, buf, bufsz, count);
@@ -1024,7 +1023,7 @@ static void search_includes(const char *workspace_root,
             if (strcmp(visited[v], header_path) == 0) { already = 1; break; }
         if (already) continue;
         if (*nvisited < MAX_INCLUDES)
-            strncpy(visited[(*nvisited)++], header_path, MAX_PATH - 1);
+            snprintf(visited[(*nvisited)++], MAX_PATH, "%s", header_path);
 
         char *hsrc = read_file(header_path);
         if (!hsrc) continue;
@@ -1956,22 +1955,20 @@ static void find_cscope_db(const char *file_path,
                             char *db_dir, size_t db_dir_sz)
 {
     char dir[MAX_PATH];
-    strncpy(dir, file_path, MAX_PATH - 1);
-    dir[MAX_PATH - 1] = '\0';
+    snprintf(dir, MAX_PATH, "%s", file_path);
     char *slash = strrchr(dir, '/');
     if (slash) *slash = '\0';
     else       { strncpy(db_dir, ".", db_dir_sz); return; }
 
-    char candidate[MAX_PATH];
+    char candidate[MAX_PATH + 16];
     char best[MAX_PATH];
     best[0] = '\0';
     char cur[MAX_PATH];
-    strncpy(cur, dir, MAX_PATH - 1);
-    cur[MAX_PATH - 1] = '\0';
+    snprintf(cur, MAX_PATH, "%s", dir);
     for (;;) {
         snprintf(candidate, sizeof(candidate), "%s/cscope.out", cur);
         if (access(candidate, F_OK) == 0)
-            strncpy(best, cur, MAX_PATH - 1);
+            snprintf(best, MAX_PATH, "%s", cur);
         char *up = strrchr(cur, '/');
         if (!up || up == cur) break;
         *up = '\0';
@@ -2068,7 +2065,7 @@ static void handle_references(const char *msg, const char *id)
                    ref_file, ref_func, &ref_line, ref_text) < 3)
             continue;
 
-        char ref_uri[MAX_URI];
+        char ref_uri[MAX_PATH + 8];
         if (ref_file[0] == '/')
             snprintf(ref_uri, sizeof(ref_uri), "file://%s", ref_file);
         else
@@ -2076,7 +2073,7 @@ static void handle_references(const char *msg, const char *id)
 
         int lsp_line = ref_line > 0 ? ref_line - 1 : 0;
 
-        char entry[MAX_URI + 256];
+        char entry[MAX_PATH + 8 + 256];
         int elen = snprintf(entry, sizeof(entry),
             "{\"uri\":\"%s\","
             "\"range\":{\"start\":{\"line\":%d,\"character\":0},"
@@ -2285,7 +2282,7 @@ static void handle_rename(const char *msg, const char *id)
     int changes_count = 0;
 
     /* Accumulate edits per file using a simple array */
-    typedef struct { char uri[MAX_URI]; int lines[512]; int count; } FileEdits;
+    typedef struct { char uri[MAX_PATH + 8]; int lines[512]; int count; } FileEdits;
     FileEdits *files = calloc(256, sizeof(FileEdits));
     if (!files) { free(changes); send_null_result(id); return; }
     int nfiles = 0;
@@ -2302,7 +2299,7 @@ static void handle_rename(const char *msg, const char *id)
                 if (sscanf(line_buf, "%s %s %d %[^\n]",
                            ref_file, ref_func, &ref_line, ref_text) < 3)
                     continue;
-                char ref_uri[MAX_URI];
+                char ref_uri[MAX_PATH + 8];
                 if (ref_file[0] == '/')
                     snprintf(ref_uri, sizeof(ref_uri), "file://%s", ref_file);
                 else
@@ -2314,8 +2311,7 @@ static void handle_rename(const char *msg, const char *id)
                     if (strcmp(files[k].uri, ref_uri) == 0) { fi = k; break; }
                 if (fi < 0 && nfiles < 256) {
                     fi = nfiles++;
-                    strncpy(files[fi].uri, ref_uri, MAX_URI - 1);
-                    files[fi].count = 0;
+                    snprintf(files[fi].uri, MAX_PATH + 8, "%s", ref_uri);
                 }
                 if (fi >= 0 && files[fi].count < 512)
                     files[fi].lines[files[fi].count++] = ref_line - 1;
@@ -2426,7 +2422,7 @@ static void handle_formatting(const char *msg, const char *id)
     fname = fname ? fname + 1 : file_path;
 
     /* Pipe text through clang-format */
-    char cmd[512];
+    char cmd[MAX_PATH + 64];
     snprintf(cmd, sizeof(cmd),
              "clang-format --assume-filename='%s' 2>/dev/null", fname);
 
@@ -2605,7 +2601,7 @@ static int collect_completions(TSNode node, const char *src,
             for (int k = 0; k < *count; k++)
                 if (strcmp(items[k].name, cname) == 0) { dup = 1; break; }
             if (!dup && *count < max_items) {
-                strncpy(items[*count].name, cname, 255);
+                snprintf(items[*count].name, 256, "%s", cname);
                 items[*count].kind = kind;
                 (*count)++;
             }
