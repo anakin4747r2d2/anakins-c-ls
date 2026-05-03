@@ -518,22 +518,19 @@ teardown() {
     lsts_initialize
     lsts_open "linux/kernel/pid_namespace.c"
     lsts_hover \
-        "linux/kernel/pid_namespace.c:40:15" \
-        "fixtures/hover_kmem_cache.rpc.json"
+        "linux/kernel/pid_namespace.c:40:15"
 }
 
 @test "definition on struct type jumps to struct definition in included header" {
     lsts_initialize
     lsts_open "linux/kernel/pid_namespace.c"
     lsts_definition \
-        "linux/kernel/pid_namespace.c:40:15" \
-        "fixtures/definition_kmem_cache.rpc.json"
+        "linux/kernel/pid_namespace.c:40:15"
 }
 
 @test "definition on macro from included header jumps to macro definition" {
     lsts_initialize
     lsts_open "linux/kernel/pid_namespace.c"
     lsts_definition \
-        "linux/kernel/pid_namespace.c:48:6" \
-        "fixtures/definition_read_once.rpc.json"
+        "linux/kernel/pid_namespace.c:48:6"
 }
