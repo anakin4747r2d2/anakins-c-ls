@@ -580,11 +580,11 @@ static void handle_initialize(const char *msg, const char *id)
      * and the root looks like a real source tree (has a Makefile or
      * Kconfig — not a test harness directory). */
     if (workspace_root[0]) {
-        char db_path[MAX_PATH + 16];
-        char makefile_path[MAX_PATH + 16];
-        snprintf(db_path, sizeof(db_path), "%s/cscope.out", workspace_root);
-        snprintf(makefile_path, sizeof(makefile_path), "%s/Makefile", workspace_root);
-        if (access(db_path, F_OK) != 0 && access(makefile_path, F_OK) == 0)
+        char check_path[MAX_PATH + 16];
+        snprintf(check_path, sizeof(check_path), "%s/cscope.out", workspace_root);
+        int no_db = (access(check_path, F_OK) != 0);
+        snprintf(check_path, sizeof(check_path), "%s/Makefile", workspace_root);
+        if (no_db && access(check_path, F_OK) == 0)
             build_cscope_db(workspace_root);
     }
 
