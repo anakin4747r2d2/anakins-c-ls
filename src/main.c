@@ -607,7 +607,7 @@ static void send_initialize_result(const char *id)
              "\"renameProvider\":true,"
              "\"documentFormattingProvider\":true,"
              "\"completionProvider\":{},"
-             "\"textDocumentSync\":{\"openClose\":true}"
+             "\"textDocumentSync\":{\"openClose\":true,\"change\":2}"
              "}}}", id);
     send_message(body);
 }
