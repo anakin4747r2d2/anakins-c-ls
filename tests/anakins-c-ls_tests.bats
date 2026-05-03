@@ -24,18 +24,15 @@ teardown() {
 }
 
 @test "initialize response declares hoverProvider" {
-    lsts_initialize
-    echo "$LSTS_RESPONSE" | jq -e '.result.capabilities.hoverProvider == true' > /dev/null
+    lsts_initialize_capability 'hoverProvider == true'
 }
 
 @test "initialize response declares textDocumentSync openClose" {
-    lsts_initialize
-    echo "$LSTS_RESPONSE" | jq -e '.result.capabilities.textDocumentSync.openClose == true' > /dev/null
+    lsts_initialize_capability 'textDocumentSync.openClose == true'
 }
 
 @test "initialize response declares textDocumentSync change" {
-    lsts_initialize
-    echo "$LSTS_RESPONSE" | jq -e '.result.capabilities.textDocumentSync.change != null' > /dev/null
+    lsts_initialize_capability 'textDocumentSync.change != null'
 }
 
 @test "hover on #include returns documentation" {
@@ -315,8 +312,7 @@ teardown() {
 }
 
 @test "initialize response declares definitionProvider" {
-    lsts_initialize
-    echo "$LSTS_RESPONSE" | jq -e '.result.capabilities.definitionProvider == true' > /dev/null
+    lsts_initialize_capability 'definitionProvider == true'
 }
 
 @test "definition on goto label name jumps to label in same function" {
@@ -386,14 +382,12 @@ teardown() {
 }
 
 @test "initialize response declares documentSymbolProvider" {
-    lsts_initialize
-    echo "$LSTS_RESPONSE" | jq -e '.result.capabilities.documentSymbolProvider == true' > /dev/null
+    lsts_initialize_capability 'documentSymbolProvider == true'
 }
 
 
 @test "initialize response declares callHierarchyProvider" {
-    lsts_initialize
-    echo "$LSTS_RESPONSE" | jq -e '.result.capabilities.callHierarchyProvider == true' > /dev/null
+    lsts_initialize_capability 'callHierarchyProvider == true'
 }
 
 @test "callHierarchy/prepare on function name returns item" {
@@ -447,8 +441,7 @@ teardown() {
 }
 
 @test "initialize response declares referencesProvider" {
-    lsts_initialize
-    echo "$LSTS_RESPONSE" | jq -e '.result.capabilities.referencesProvider == true' > /dev/null
+    lsts_initialize_capability 'referencesProvider == true'
 }
 
 @test "textDocument/references finds all call sites of try_one_irq" {
@@ -462,8 +455,7 @@ teardown() {
 
 # workspace/symbol tests
 @test "initialize response declares workspaceSymbolProvider" {
-    lsts_initialize
-    echo "$LSTS_RESPONSE" | jq -e '.result.capabilities.workspaceSymbolProvider == true' > /dev/null
+    lsts_initialize_capability 'workspaceSymbolProvider == true'
 }
 
 @test "workspace/symbol returns matching symbols" {
@@ -476,8 +468,7 @@ teardown() {
 
 # textDocument/rename tests
 @test "initialize response declares renameProvider" {
-    lsts_initialize
-    echo "$LSTS_RESPONSE" | jq -e '.result.capabilities.renameProvider == true' > /dev/null
+    lsts_initialize_capability 'renameProvider == true'
 }
 
 @test "textDocument/rename returns workspace edit" {
@@ -489,8 +480,7 @@ teardown() {
 
 # textDocument/formatting tests
 @test "initialize response declares documentFormattingProvider" {
-    lsts_initialize
-    echo "$LSTS_RESPONSE" | jq -e '.result.capabilities.documentFormattingProvider == true' > /dev/null
+    lsts_initialize_capability 'documentFormattingProvider == true'
 }
 
 @test "textDocument/formatting returns text edits" {
@@ -502,8 +492,7 @@ teardown() {
 
 # textDocument/completion tests
 @test "initialize response declares completionProvider" {
-    lsts_initialize
-    echo "$LSTS_RESPONSE" | jq -e '.result.capabilities.completionProvider != null' > /dev/null
+    lsts_initialize_capability 'completionProvider != null'
 }
 
 @test "textDocument/completion returns items for partial identifier" {
