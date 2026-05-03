@@ -62,7 +62,7 @@
               vim.lsp.config("anakins-c-ls", {
                 cmd = { "anakins-c-ls" },
                 filetypes = { "c" },
-                root_dir = "$kernel_root",
+                root_markers = { ".git", "Makefile", "Kconfig" },
               })
               vim.lsp.enable("anakins-c-ls")
               vim.keymap.set("n", "gd", vim.lsp.buf.definition,        { desc = "Go to definition" })
