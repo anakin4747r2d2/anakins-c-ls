@@ -10,16 +10,6 @@ Run from inside a Linux kernel source tree:
 nix run github:anakin4747r2d2/anakins-c-ls#tryout
 ```
 
-### Keybindings
-
-| Key | Action |
-|-----|--------|
-| `gd` | Go to definition |
-| `gr` | Find all references |
-| `K` | Hover documentation |
-| `<leader>r` | Rename symbol |
-| `<leader>s` | List document symbols |
-
 ## Features
 
 - Hover documentation for all C keywords and preprocessor directives

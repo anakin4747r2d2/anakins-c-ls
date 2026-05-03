@@ -58,12 +58,6 @@
                 root_markers = { ".git", "Makefile", "Kconfig" },
               })
               vim.lsp.enable("anakins-c-ls")
-              vim.keymap.set("n", "gd", vim.lsp.buf.definition,        { desc = "Go to definition" })
-              vim.keymap.set("n", "gr", vim.lsp.buf.references,        { desc = "Find references" })
-              vim.keymap.set("n", "K",  vim.lsp.buf.hover,             { desc = "Hover docs" })
-              vim.keymap.set("n", "<leader>r", vim.lsp.buf.rename,     { desc = "Rename symbol" })
-              vim.keymap.set("n", "<leader>s", vim.lsp.buf.document_symbol, { desc = "Document symbols" })
-              print("anakins-c-ls ready — gd=definition  gr=references  K=hover  <leader>r=rename")
               EOF
 
               exec nvim -u "$nvim_config/init.lua" "$c_file"
