@@ -85,6 +85,7 @@
             cscope
             diffutils
             jq
+            pkg-config
             shellcheck
             tree-sitter
             self.packages.${system}.default

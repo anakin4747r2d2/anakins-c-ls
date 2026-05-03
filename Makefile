@@ -4,8 +4,8 @@ FILTER ?= .
 CC     ?= cc
 CFLAGS ?= -Wall -Wextra
 
-TREE_SITTER_CFLAGS  ?= $(shell pkg-config --cflags tree-sitter)
-TREE_SITTER_LIBS    ?= $(shell pkg-config --libs tree-sitter) -l:c.so
+TREE_SITTER_CFLAGS  ?= $(shell pkg-config --cflags tree-sitter 2>/dev/null)
+TREE_SITTER_LIBS    ?= $(shell pkg-config --libs tree-sitter 2>/dev/null) -ltree-sitter -l:c.so
 TREE_SITTER_GRAMMARS ?=
 
 all:
