@@ -24,7 +24,7 @@
             nativeBuildInputs = [ pkgs.makeWrapper pkgs.pkg-config ];
             buildInputs = [ pkgs.tree-sitter grammars ];
 
-            buildPhase = ''make build'';
+            buildPhase = ''make build TREE_SITTER_GRAMMARS=${grammars}'';
 
             installPhase = ''
               mkdir -p $out/bin

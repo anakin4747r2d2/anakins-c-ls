@@ -4,8 +4,9 @@ FILTER ?= .
 CC     ?= cc
 CFLAGS ?= -Wall -Wextra
 
-TREE_SITTER_CFLAGS ?= $(shell pkg-config --cflags tree-sitter)
-TREE_SITTER_LIBS   ?= $(shell pkg-config --libs tree-sitter) -l:c.so
+TREE_SITTER_CFLAGS  ?= $(shell pkg-config --cflags tree-sitter)
+TREE_SITTER_LIBS    ?= $(shell pkg-config --libs tree-sitter) -l:c.so
+TREE_SITTER_GRAMMARS ?=
 
 all:
 	nix develop --command make build test lint
@@ -15,6 +16,7 @@ build:
 	$(CC) $(CFLAGS) $(TREE_SITTER_CFLAGS) \
 		-Isrc \
 		-o out/anakins-c-ls src/main.c \
+		$(if $(TREE_SITTER_GRAMMARS),-L$(TREE_SITTER_GRAMMARS)) \
 		$(TREE_SITTER_LIBS)
 
 lint:
