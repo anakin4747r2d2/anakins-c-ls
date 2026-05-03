@@ -58,6 +58,7 @@
 
               nvim_config=$(mktemp -d)
               cat > "$nvim_config/init.lua" << EOF
+              vim.cmd("filetype plugin on")
               vim.opt.swapfile = false
               vim.lsp.config("anakins-c-ls", {
                 cmd = { "anakins-c-ls" },
