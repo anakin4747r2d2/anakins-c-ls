@@ -26,9 +26,8 @@
 
             buildPhase = ''
               make build \
-                TREE_SITTER_INC=${pkgs.tree-sitter}/include \
-                TREE_SITTER_LIB=${pkgs.tree-sitter}/lib \
-                TREE_SITTER_GRAMMARS=${grammars}
+                TREE_SITTER_CFLAGS="-I${pkgs.tree-sitter}/include" \
+                TREE_SITTER_LIBS="-L${pkgs.tree-sitter}/lib -L${grammars} -ltree-sitter -l:c.so"
             '';
 
             installPhase = ''

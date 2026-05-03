@@ -1,25 +1,21 @@
 .PHONY: all build test filter lint install
 
 FILTER ?= .
-CC ?= cc
+CC     ?= cc
 CFLAGS ?= -Wall -Wextra
-TREE_SITTER_INC ?= /usr/include
-TREE_SITTER_LIB ?= /usr/lib
-TREE_SITTER_GRAMMARS ?= /usr/lib
+
+TREE_SITTER_CFLAGS ?= $(shell pkg-config --cflags tree-sitter)
+TREE_SITTER_LIBS   ?= $(shell pkg-config --libs tree-sitter) -l:c.so
 
 all:
 	nix develop --command make build test lint
 
 build:
 	mkdir -p out
-	$(CC) $(CFLAGS) \
+	$(CC) $(CFLAGS) $(TREE_SITTER_CFLAGS) \
 		-Isrc \
-		-I$(TREE_SITTER_INC) \
 		-o out/anakins-c-ls src/main.c \
-		-L$(TREE_SITTER_LIB) \
-		-L$(TREE_SITTER_GRAMMARS) \
-		-ltree-sitter \
-		-l:c.so
+		$(TREE_SITTER_LIBS)
 
 lint:
 	shellcheck --external-sources --shell=bash tests/*_tests.bats
