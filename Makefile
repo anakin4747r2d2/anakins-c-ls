@@ -18,10 +18,10 @@ lint:
 	shellcheck --external-sources --shell=bash tests/*_tests.bats
 
 test:
-	bats --formatter $(CURDIR)/bats-format-pretty tests/*_tests.bats
+	bats --formatter $(CURDIR)/tests/lsts/lsts-format-pretty tests/*_tests.bats
 
 filter:
-	bats --formatter $(CURDIR)/bats-format-pretty \
+	bats --formatter $(CURDIR)/tests/lsts/lsts-format-pretty \
 		--filter "$(FILTER)" tests/*_tests.bats
 
 install:
