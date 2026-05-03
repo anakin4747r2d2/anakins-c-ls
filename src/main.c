@@ -366,14 +366,16 @@
     "\n" \
     "`while` introduces a loop that executes its body as long as the controlling expression is nonzero. The expression is evaluated before each execution of the body; if it is zero on the first evaluation, the body is never executed."
 
-#define MAX_DOCS   64
-#define MAX_URI    1024
-#define MAX_MSG    (1 << 20)  /* 1 MiB */
+#define MAX_DOCS     64
+#define MAX_URI      1024
+#define MAX_MSG      (1 << 20)  /* 1 MiB */
+#define MAX_INCLUDES 64
+#define MAX_PATH     2048
 
 /* ---------- document store ---------- */
 
 static TSParser *parser;
-static char workspace_root[2048]; /* MAX_PATH */
+static char workspace_root[MAX_PATH];
 
 typedef struct {
     char    uri[MAX_URI];
@@ -711,9 +713,6 @@ static void handle_did_open(const char *msg)
 }
 
 /* ---------- definition helpers ---------- */
-
-#define MAX_INCLUDES 64
-#define MAX_PATH     2048
 
 /* Append a Location JSON object to buf (capacity bufsz) at byte offset s in
  * src, with identifier length ident_len, for the given uri. */
