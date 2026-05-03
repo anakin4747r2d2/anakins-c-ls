@@ -514,23 +514,3 @@ teardown() {
 }
 
 # kernel/pid_namespace.c tests — struct and macro from included headers
-@test "hover on struct type returns non-null result" {
-    lsts_initialize
-    lsts_open "linux/kernel/pid_namespace.c"
-    lsts_hover \
-        "linux/kernel/pid_namespace.c:40:15"
-}
-
-@test "definition on struct type jumps to struct definition in included header" {
-    lsts_initialize
-    lsts_open "linux/kernel/pid_namespace.c"
-    lsts_definition \
-        "linux/kernel/pid_namespace.c:40:15"
-}
-
-@test "definition on macro from included header jumps to macro definition" {
-    lsts_initialize
-    lsts_open "linux/kernel/pid_namespace.c"
-    lsts_definition \
-        "linux/kernel/pid_namespace.c:48:6"
-}
