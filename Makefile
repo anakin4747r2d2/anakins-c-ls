@@ -1,19 +1,9 @@
-.PHONY: all dev test filter lint install
+.PHONY: all test filter lint install
 
 FILTER ?= .
 
 all:
 	nix develop --command make test lint
-
-dev:
-	nix build
-	rm -f *.log
-	gnome-terminal --full-screen -- \
-		env PATH="$(CURDIR)/result/bin:$(PATH)" \
-		nvim -u $(CURDIR)/init.lua \
-			-V5$(CURDIR)/nvim.log \
-			$(CURDIR)/tests/linux/drivers/gpio/gpio-amd8111.c
-
 lint:
 	shellcheck --external-sources --shell=bash tests/*_tests.bats
 
