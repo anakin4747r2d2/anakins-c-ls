@@ -25,15 +25,10 @@
             buildInputs = [ pkgs.tree-sitter grammars ];
 
             buildPhase = ''
-              mkdir -p out
-              cc -Wall -Wextra \
-                -Isrc \
-                -I${pkgs.tree-sitter}/include \
-                -o out/anakins-c-ls src/main.c \
-                -L${pkgs.tree-sitter}/lib \
-                -L${grammars} \
-                -ltree-sitter \
-                -l:c.so
+              make build \
+                TREE_SITTER_INC=${pkgs.tree-sitter}/include \
+                TREE_SITTER_LIB=${pkgs.tree-sitter}/lib \
+                TREE_SITTER_GRAMMARS=${grammars}
             '';
 
             installPhase = ''
