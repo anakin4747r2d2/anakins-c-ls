@@ -10,14 +10,6 @@ Run from inside a Linux kernel source tree:
 nix run github:anakin4747r2d2/anakins-c-ls#tryout
 ```
 
-For `textDocument/references` support, build a cscope database first:
-
-```sh
-cd /path/to/linux
-make cscope
-nix run github:anakin4747r2d2/anakins-c-ls#tryout
-```
-
 ### Keybindings
 
 | Key | Action |
