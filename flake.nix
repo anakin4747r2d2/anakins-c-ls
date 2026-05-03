@@ -42,45 +42,42 @@
             '';
           };
 
-          tryout = pkgs.writeShellScriptBin "anakins-c-ls-tryout" ''
-            set -e
-            if [ -z "$1" ]; then
-              echo "Usage: nix run github:anakin4747r2d2/anakins-c-ls#tryout -- /path/to/linux"
-              echo ""
-              echo "Opens neovim with anakins-c-ls configured, rooted at the given Linux source tree."
-              echo "Run 'make cscope' in the Linux tree first for textDocument/references support."
-              exit 1
-            fi
-            LINUX_DIR="$(realpath "$1")"
-            if [ ! -d "$LINUX_DIR" ]; then
-              echo "Error: '$LINUX_DIR' is not a directory" >&2
-              exit 1
-            fi
-            INIT_LUA="$(mktemp --suffix=.lua)"
-            trap 'rm -f "$INIT_LUA"' EXIT
-            cat > "$INIT_LUA" << 'EOF'
-            vim.opt.swapfile = false
-            vim.lsp.config("anakins-c-ls", {
-              cmd = { "${pkgs.lib.getExe self.packages.${system}.default}" },
-              filetypes = { "c" },
-              root_markers = { ".git", "Makefile", "Kconfig" },
-            })
-            vim.lsp.enable("anakins-c-ls")
-            vim.keymap.set("n", "gd", vim.lsp.buf.definition, { desc = "Go to definition" })
-            vim.keymap.set("n", "gr", vim.lsp.buf.references, { desc = "Find references" })
-            vim.keymap.set("n", "K",  vim.lsp.buf.hover,      { desc = "Hover docs" })
-            vim.keymap.set("n", "<leader>r", vim.lsp.buf.rename,     { desc = "Rename symbol" })
-            vim.keymap.set("n", "<leader>s", vim.lsp.buf.document_symbol, { desc = "Document symbols" })
-            print("anakins-c-ls ready — gd=definition  gr=references  K=hover  <leader>r=rename")
-            EOF
-            cd "$LINUX_DIR"
-            exec ${pkgs.lib.getExe pkgs.neovim} -u "$INIT_LUA" "$@"
-          '';
+          tryout = pkgs.writeShellApplication {
+            name = "tryout";
+            runtimeInputs = with pkgs; [ neovim gnused gnugrep self.packages.${system}.default ];
+            checkPhase = "";
+            text = ''
+              kernel_root="$(pwd)"
+
+              c_file="$(find "$kernel_root/kernel" -name '*.c' -print -quit 2>/dev/null)"
+              if [[ -z "$c_file" ]]; then
+                echo "tryout: no .c files found under $kernel_root/kernel" >&2
+                echo "Run this from the root of a Linux kernel source tree." >&2
+                exit 1
+              fi
+
+              nvim_config=$(mktemp -d)
+              printf 'vim.lsp.set_log_level("off")\n' > "$nvim_config/init.lua"
+              printf 'vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile" }, {\n' >> "$nvim_config/init.lua"
+              printf '    pattern = { "*.c", "*.h" },\n' >> "$nvim_config/init.lua"
+              printf '    callback = function()\n' >> "$nvim_config/init.lua"
+              printf '        vim.lsp.start({\n' >> "$nvim_config/init.lua"
+              printf '            name = "anakins-c-ls",\n' >> "$nvim_config/init.lua"
+              printf '            cmd = { "anakins-c-ls" },\n' >> "$nvim_config/init.lua"
+              printf '            root_dir = "%s",\n' "$kernel_root" >> "$nvim_config/init.lua"
+              printf '            filetypes = { "c" },\n' >> "$nvim_config/init.lua"
+              printf '        })\n' >> "$nvim_config/init.lua"
+              printf '    end,\n' >> "$nvim_config/init.lua"
+              printf '})\n' >> "$nvim_config/init.lua"
+
+              exec nvim -u "$nvim_config/init.lua" "$c_file"
+            '';
+          };
         };
 
         apps.tryout = {
           type = "app";
-          program = "${self.packages.${system}.tryout}/bin/anakins-c-ls-tryout";
+          program = "${self.packages.${system}.tryout}/bin/tryout";
         };
 
         devShells.default = pkgs.mkShell {

@@ -4,10 +4,10 @@ A lightweight C language server for Neovim, built with tree-sitter and cscope.
 
 ## Try it out
 
-Point it at a Linux kernel source tree and drop into Neovim with the LSP configured:
+Run from inside a Linux kernel source tree:
 
 ```sh
-nix run github:anakin4747r2d2/anakins-c-ls#tryout -- /path/to/linux
+nix run github:anakin4747r2d2/anakins-c-ls#tryout
 ```
 
 For `textDocument/references` support, build a cscope database first:
@@ -15,7 +15,7 @@ For `textDocument/references` support, build a cscope database first:
 ```sh
 cd /path/to/linux
 make cscope
-nix run github:anakin4747r2d2/anakins-c-ls#tryout -- .
+nix run github:anakin4747r2d2/anakins-c-ls#tryout
 ```
 
 ### Keybindings
