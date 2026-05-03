@@ -57,18 +57,21 @@
               fi
 
               nvim_config=$(mktemp -d)
-              printf 'vim.lsp.set_log_level("off")\n' > "$nvim_config/init.lua"
-              printf 'vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile" }, {\n' >> "$nvim_config/init.lua"
-              printf '    pattern = { "*.c", "*.h" },\n' >> "$nvim_config/init.lua"
-              printf '    callback = function()\n' >> "$nvim_config/init.lua"
-              printf '        vim.lsp.start({\n' >> "$nvim_config/init.lua"
-              printf '            name = "anakins-c-ls",\n' >> "$nvim_config/init.lua"
-              printf '            cmd = { "anakins-c-ls" },\n' >> "$nvim_config/init.lua"
-              printf '            root_dir = "%s",\n' "$kernel_root" >> "$nvim_config/init.lua"
-              printf '            filetypes = { "c" },\n' >> "$nvim_config/init.lua"
-              printf '        })\n' >> "$nvim_config/init.lua"
-              printf '    end,\n' >> "$nvim_config/init.lua"
-              printf '})\n' >> "$nvim_config/init.lua"
+              cat > "$nvim_config/init.lua" << EOF
+              vim.opt.swapfile = false
+              vim.lsp.config("anakins-c-ls", {
+                cmd = { "anakins-c-ls" },
+                filetypes = { "c" },
+                root_dir = "$kernel_root",
+              })
+              vim.lsp.enable("anakins-c-ls")
+              vim.keymap.set("n", "gd", vim.lsp.buf.definition,        { desc = "Go to definition" })
+              vim.keymap.set("n", "gr", vim.lsp.buf.references,        { desc = "Find references" })
+              vim.keymap.set("n", "K",  vim.lsp.buf.hover,             { desc = "Hover docs" })
+              vim.keymap.set("n", "<leader>r", vim.lsp.buf.rename,     { desc = "Rename symbol" })
+              vim.keymap.set("n", "<leader>s", vim.lsp.buf.document_symbol, { desc = "Document symbols" })
+              print("anakins-c-ls ready — gd=definition  gr=references  K=hover  <leader>r=rename")
+              EOF
 
               exec nvim -u "$nvim_config/init.lua" "$c_file"
             '';
