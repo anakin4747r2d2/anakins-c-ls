@@ -21,14 +21,10 @@
             version = "0.2.0";
             src = ./.;
 
-            nativeBuildInputs = [ pkgs.makeWrapper ];
+            nativeBuildInputs = [ pkgs.makeWrapper pkgs.pkg-config ];
             buildInputs = [ pkgs.tree-sitter grammars ];
 
-            buildPhase = ''
-              make build \
-                TREE_SITTER_CFLAGS="-I${pkgs.tree-sitter}/include" \
-                TREE_SITTER_LIBS="-L${pkgs.tree-sitter}/lib -L${grammars} -ltree-sitter -l:c.so"
-            '';
+            buildPhase = ''make build'';
 
             installPhase = ''
               mkdir -p $out/bin
