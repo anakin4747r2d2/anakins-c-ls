@@ -33,6 +33,11 @@ teardown() {
     echo "$LSTS_RESPONSE" | jq -e '.result.capabilities.textDocumentSync.openClose == true' > /dev/null
 }
 
+@test "initialize response declares textDocumentSync change" {
+    lsts_initialize
+    echo "$LSTS_RESPONSE" | jq -e '.result.capabilities.textDocumentSync.change != null' > /dev/null
+}
+
 @test "hover on #include returns documentation" {
     lsts_hover \
         "linux/arch/parisc/kernel/smp.c:16:2" \
