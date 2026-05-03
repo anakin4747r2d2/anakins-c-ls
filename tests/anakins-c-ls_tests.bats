@@ -512,3 +512,28 @@ teardown() {
     lsts_recv_response
     echo "$LSTS_RESPONSE" | jq -e '.result | type == "array"' > /dev/null
 }
+
+# kernel/pid_namespace.c tests — struct and macro from included headers
+@test "hover on struct type returns non-null result" {
+    lsts_initialize
+    lsts_open "linux/kernel/pid_namespace.c"
+    lsts_hover \
+        "linux/kernel/pid_namespace.c:40:15" \
+        "fixtures/hover_kmem_cache.rpc.json"
+}
+
+@test "definition on struct type jumps to struct definition in included header" {
+    lsts_initialize
+    lsts_open "linux/kernel/pid_namespace.c"
+    lsts_definition \
+        "linux/kernel/pid_namespace.c:40:15" \
+        "fixtures/definition_kmem_cache.rpc.json"
+}
+
+@test "definition on macro from included header jumps to macro definition" {
+    lsts_initialize
+    lsts_open "linux/kernel/pid_namespace.c"
+    lsts_definition \
+        "linux/kernel/pid_namespace.c:48:6" \
+        "fixtures/definition_read_once.rpc.json"
+}
