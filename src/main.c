@@ -985,6 +985,65 @@ static void search_header(const char *header_path, const char *header_src,
                         kind, huri, buf, bufsz, count);
 }
 
+/* Recursively search header files reachable from file_path for definitions
+ * of ident/kind, appending Location entries to buf.
+ * visited/nvisited tracks already-searched paths to prevent cycles.
+ * workspace_root is used for resolving <system> includes. */
+static void search_includes(const char *workspace_root,
+                            const char *file_path,
+                            const char *src,
+                            TSNode root,
+                            const char *ident, uint32_t ident_len,
+                            const char *kind,
+                            char *buf, size_t bufsz, int *count,
+                            char visited[][MAX_PATH], int *nvisited)
+{
+    uint32_t nchildren = ts_node_named_child_count(root);
+    for (uint32_t i = 0; i < nchildren && *count == 0; i++) {
+        TSNode ch = ts_node_named_child(root, i);
+        if (strcmp(ts_node_type(ch), "preproc_include") != 0) continue;
+
+        TSNode path_node = ts_node_named_child(ch, 0);
+        if (ts_node_is_null(path_node)) continue;
+
+        uint32_t ps = ts_node_start_byte(path_node);
+        uint32_t pe = ts_node_end_byte(path_node);
+        char include_text[MAX_PATH];
+        uint32_t plen = pe - ps < sizeof(include_text) - 1
+                        ? pe - ps : sizeof(include_text) - 1;
+        strncpy(include_text, src + ps, plen);
+        include_text[plen] = '\0';
+
+        char header_path[MAX_PATH];
+        if (!resolve_include(workspace_root, file_path,
+                             include_text, header_path, sizeof(header_path)))
+            continue;
+
+        int already = 0;
+        for (int v = 0; v < *nvisited; v++)
+            if (strcmp(visited[v], header_path) == 0) { already = 1; break; }
+        if (already) continue;
+        if (*nvisited < MAX_INCLUDES)
+            strncpy(visited[(*nvisited)++], header_path, MAX_PATH - 1);
+
+        char *hsrc = read_file(header_path);
+        if (!hsrc) continue;
+
+        TSTree *htree = ts_parser_parse_string(parser, NULL, hsrc, strlen(hsrc));
+        if (htree) {
+            TSNode hroot = ts_tree_root_node(htree);
+            search_header(header_path, hsrc, hroot,
+                          ident, ident_len, kind, buf, bufsz, count);
+            if (*count == 0)
+                search_includes(workspace_root, header_path, hsrc, hroot,
+                                ident, ident_len, kind, buf, bufsz, count,
+                                visited, nvisited);
+            ts_tree_delete(htree);
+        }
+        free(hsrc);
+    }
+}
+
 static void handle_definition(const char *msg, const char *id)
 {
     char uri[MAX_URI];
@@ -1106,51 +1165,11 @@ static void handle_definition(const char *msg, const char *id)
         char workspace_root[MAX_PATH];
         derive_workspace_root(file_path, workspace_root, sizeof(workspace_root));
 
-        /* Walk preproc_include nodes and search each included file. */
-        uint32_t nchildren = ts_node_named_child_count(root);
         char visited[MAX_INCLUDES][MAX_PATH];
         int nvisited = 0;
-
-        for (uint32_t i = 0; i < nchildren && count == 0; i++) {
-            TSNode ch = ts_node_named_child(root, i);
-            if (strcmp(ts_node_type(ch), "preproc_include") != 0) continue;
-
-            /* Extract the path string child */
-            TSNode path_node = ts_node_named_child(ch, 0);
-            if (ts_node_is_null(path_node)) continue;
-
-            uint32_t ps = ts_node_start_byte(path_node);
-            uint32_t pe = ts_node_end_byte(path_node);
-            char include_text[MAX_PATH];
-            uint32_t plen = pe - ps < sizeof(include_text) - 1
-                            ? pe - ps : sizeof(include_text) - 1;
-            strncpy(include_text, d->text + ps, plen);
-            include_text[plen] = '\0';
-
-            char header_path[MAX_PATH];
-            if (!resolve_include(workspace_root, file_path,
-                                 include_text, header_path, sizeof(header_path)))
-                continue;
-
-            /* Avoid visiting the same header twice */
-            int already = 0;
-            for (int v = 0; v < nvisited; v++)
-                if (strcmp(visited[v], header_path) == 0) { already = 1; break; }
-            if (already) continue;
-            if (nvisited < MAX_INCLUDES)
-                strncpy(visited[nvisited++], header_path, MAX_PATH - 1);
-
-            char *hsrc = read_file(header_path);
-            if (!hsrc) continue;
-
-            TSTree *htree = ts_parser_parse_string(parser, NULL, hsrc, strlen(hsrc));
-            if (htree) {
-                search_header(header_path, hsrc, ts_tree_root_node(htree),
-                              ident, ident_len, kind, locs, bufsz, &count);
-                ts_tree_delete(htree);
-            }
-            free(hsrc);
-        }
+        search_includes(workspace_root, file_path, d->text, root,
+                        ident, ident_len, kind, locs, bufsz, &count,
+                        visited, &nvisited);
     }
 
     if (count == 0) {
@@ -1514,6 +1533,43 @@ static void handle_hover(const char *msg, const char *id)
         else if (tok_is("#pragma"))  send_hover_result(id, PRAGMA_DOC);
         else if (tok_is("#endif"))   send_hover_result(id, ENDIF_DOC);
         else                         send_null_result(id);
+    } else if (type_is("type_identifier") || type_is("identifier")) {
+        /* User-defined type or identifier: find the definition and show the
+         * declaration line as hover text. */
+        char hover_buf[4096];
+        hover_buf[0] = '\0';
+        int hcount = 0;
+        size_t hbufsz = sizeof(hover_buf);
+
+        const char *hkind = type_is("type_identifier") ? "type_identifier" : "identifier";
+
+        collect_definitions(ts_tree_root_node(d->tree), d->text,
+                            tok, tok_len, hkind, uri,
+                            hover_buf, hbufsz, &hcount);
+
+        if (hcount == 0) {
+            /* Search included headers recursively */
+            const char *file_path = uri;
+            if (strncmp(file_path, "file://", 7) == 0) file_path += 7;
+            char workspace_root[MAX_PATH];
+            derive_workspace_root(file_path, workspace_root, sizeof(workspace_root));
+            char visited[MAX_INCLUDES][MAX_PATH];
+            int nvisited = 0;
+            search_includes(workspace_root, file_path, d->text,
+                            ts_tree_root_node(d->tree),
+                            tok, tok_len, hkind,
+                            hover_buf, hbufsz, &hcount,
+                            visited, &nvisited);
+        }
+
+        if (hcount == 0) {
+            send_null_result(id);
+        } else {
+            /* Build a markdown code block from the token name */
+            char md[512];
+            snprintf(md, sizeof(md), "```c\n%.*s\n```", (int)tok_len, tok);
+            send_hover_result(id, md);
+        }
     } else {
         send_null_result(id);
     }
