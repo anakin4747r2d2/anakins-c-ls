@@ -1533,22 +1533,19 @@ static void handle_hover(const char *msg, const char *id)
         else if (tok_is("#pragma"))  send_hover_result(id, PRAGMA_DOC);
         else if (tok_is("#endif"))   send_hover_result(id, ENDIF_DOC);
         else                         send_null_result(id);
-    } else if (type_is("type_identifier") || type_is("identifier")) {
-        /* User-defined type or identifier: find the definition and show the
-         * declaration line as hover text. */
+    } else if (type_is("type_identifier")) {
+        /* User-defined type: find the definition and show the token name
+         * as a code-block hover. */
         char hover_buf[4096];
         hover_buf[0] = '\0';
         int hcount = 0;
         size_t hbufsz = sizeof(hover_buf);
 
-        const char *hkind = type_is("type_identifier") ? "type_identifier" : "identifier";
-
         collect_definitions(ts_tree_root_node(d->tree), d->text,
-                            tok, tok_len, hkind, uri,
+                            tok, tok_len, "type_identifier", uri,
                             hover_buf, hbufsz, &hcount);
 
         if (hcount == 0) {
-            /* Search included headers recursively */
             const char *file_path = uri;
             if (strncmp(file_path, "file://", 7) == 0) file_path += 7;
             char workspace_root[MAX_PATH];
@@ -1557,15 +1554,14 @@ static void handle_hover(const char *msg, const char *id)
             int nvisited = 0;
             search_includes(workspace_root, file_path, d->text,
                             ts_tree_root_node(d->tree),
-                            tok, tok_len, hkind,
+                            tok, tok_len, "type_identifier",
                             hover_buf, hbufsz, &hcount,
                             visited, &nvisited);
         }
 
-        if (hcount == 0) {
+        if (hcount == 0)
             send_null_result(id);
-        } else {
-            /* Build a markdown code block from the token name */
+        else {
             char md[512];
             snprintf(md, sizeof(md), "```c\n%.*s\n```", (int)tok_len, tok);
             send_hover_result(id, md);
