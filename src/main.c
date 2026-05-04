@@ -845,6 +845,20 @@ static void collect_definitions(TSNode node, const char *src,
                     append_location(buf, bufsz, count, uri, src, s, ident_len);
             }
         }
+    } else if (strcmp(kind, "macro") == 0) {
+        /* Only match #define / #define-function */
+        if (strcmp(ntype, "preproc_def") == 0 ||
+            strcmp(ntype, "preproc_function_def") == 0) {
+            TSNode name = ts_node_child_by_field_name(node, "name", 4);
+            if (!ts_node_is_null(name) &&
+                strcmp(ts_node_type(name), "identifier") == 0) {
+                uint32_t s = ts_node_start_byte(name);
+                uint32_t e = ts_node_end_byte(name);
+                if (e - s == ident_len &&
+                    strncmp(src + s, ident, ident_len) == 0)
+                    append_location(buf, bufsz, count, uri, src, s, ident_len);
+            }
+        }
     } else if (strcmp(kind, "type_identifier") == 0) {
         /* struct/union/enum definitions and typedefs */
         if ((strcmp(ntype, "struct_specifier") == 0 ||
@@ -1553,6 +1567,38 @@ static void handle_hover(const char *msg, const char *id)
             search_includes(workspace_root, file_path, d->text,
                             ts_tree_root_node(d->tree),
                             tok, tok_len, "type_identifier",
+                            hover_buf, hbufsz, &hcount,
+                            visited, &nvisited);
+        }
+
+        if (hcount == 0)
+            send_null_result(id);
+        else {
+            char md[512];
+            snprintf(md, sizeof(md), "```c\n%.*s\n```", (int)tok_len, tok);
+            send_hover_result(id, md);
+        }
+    } else if (type_is("identifier")) {
+        /* Macro call: only provide hover if a macro definition is found. */
+        char hover_buf[4096];
+        hover_buf[0] = '\0';
+        int hcount = 0;
+        size_t hbufsz = sizeof(hover_buf);
+
+        collect_definitions(ts_tree_root_node(d->tree), d->text,
+                            tok, tok_len, "macro", uri,
+                            hover_buf, hbufsz, &hcount);
+
+        if (hcount == 0) {
+            const char *file_path = uri;
+            if (strncmp(file_path, "file://", 7) == 0) file_path += 7;
+            char workspace_root[MAX_PATH];
+            derive_workspace_root(file_path, workspace_root, sizeof(workspace_root));
+            char visited[MAX_INCLUDES][MAX_PATH];
+            int nvisited = 0;
+            search_includes(workspace_root, file_path, d->text,
+                            ts_tree_root_node(d->tree),
+                            tok, tok_len, "macro",
                             hover_buf, hbufsz, &hcount,
                             visited, &nvisited);
         }
