@@ -58,6 +58,7 @@
                 root_markers = { ".git", "Makefile", "Kconfig" },
               })
               vim.lsp.enable("anakins-c-ls")
+              vim.cmd("filetype detect")
               EOF
 
               exec nvim -u "$nvim_config/init.lua" "$c_file"
