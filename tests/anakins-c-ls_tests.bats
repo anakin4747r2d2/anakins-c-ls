@@ -514,3 +514,19 @@ teardown() {
 }
 
 # kernel/pid_namespace.c tests — struct and macro from included headers
+
+@test "hover on macro from included header returns documentation" {
+    lsts_initialize
+    lsts_open "linux/kernel/pid_namespace.c"
+    lsts_hover \
+        "linux/kernel/pid_namespace.c:30:8" \
+        > "tests/fixtures/hover_define_mutex.rpc.json"
+}
+
+@test "definition on macro from included header jumps to macro definition" {
+    lsts_initialize
+    lsts_open "linux/kernel/pid_namespace.c"
+    lsts_definition \
+        "linux/kernel/pid_namespace.c:30:8" \
+        > "tests/fixtures/definition_define_mutex.rpc.json"
+}
