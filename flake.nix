@@ -50,15 +50,16 @@
 
               nvim_config=$(mktemp -d)
               cat > "$nvim_config/init.lua" << EOF
-              vim.cmd("filetype plugin on")
-              vim.opt.swapfile = false
-              vim.lsp.config("anakins-c-ls", {
-                cmd = { "anakins-c-ls" },
-                filetypes = { "c" },
-                root_markers = { ".git", "Makefile", "Kconfig" },
+              vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile" }, {
+                pattern = { "*.c", "*.h" },
+                callback = function()
+                  vim.lsp.start({
+                    name = "anakins-c-ls",
+                    cmd = { "anakins-c-ls" },
+                    root_dir = "$kernel_root",
+                  })
+                end,
               })
-              vim.lsp.enable("anakins-c-ls")
-              vim.cmd("filetype detect")
               EOF
 
               exec nvim -u "$nvim_config/init.lua" "$c_file"
