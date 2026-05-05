@@ -1153,9 +1153,10 @@ static void handle_definition(const char *msg, const char *id)
         collect_definitions(fn, d->text, ident, ident_len,
                             kind, uri, locs, bufsz, &count);
     } else {
-        /* For identifiers and type_identifiers: check local scope via AST
-         * first (catches local variables declared in the enclosing function).
-         * Then use cscope for all cross-file lookups. */
+        /* For identifiers and type_identifiers:
+         * 1. Local scope AST (local variables in enclosing function)
+         * 2. Full-file AST (functions, macros, types defined in this file)
+         * 3. Cscope (cross-file: anything not found in the current file) */
         if (strcmp(kind, "identifier") == 0) {
             TSNode fn = find_enclosing_function(root, byte);
             if (!ts_node_is_null(fn))
@@ -1163,8 +1164,12 @@ static void handle_definition(const char *msg, const char *id)
                                     kind, uri, locs, bufsz, &count);
         }
 
+        if (count == 0)
+            collect_definitions(root, d->text, ident, ident_len,
+                                kind, uri, locs, bufsz, &count);
+
         if (count == 0) {
-            /* Use cscope to find the global definition. */
+            /* Fall back to cscope for cross-file lookups. */
             const char *file_path = uri;
             if (strncmp(file_path, "file://", 7) == 0) file_path += 7;
 
@@ -2351,12 +2356,12 @@ static void handle_rename(const char *msg, const char *id)
     int changes_count = 0;
 
     /* Accumulate edits per file using a simple array */
-    typedef struct { char uri[MAX_PATH + 8]; int lines[512]; int count; } FileEdits;
+    typedef struct { char uri[MAX_PATH * 2 + 8]; int lines[512]; int count; } FileEdits;
     FileEdits *files = calloc(256, sizeof(FileEdits));
     if (!files) { free(changes); send_null_result(id); return; }
     int nfiles = 0;
 
-    char cscope_out_path[MAX_PATH];
+    char cscope_out_path[MAX_PATH + 16];
     snprintf(cscope_out_path, sizeof(cscope_out_path), "%s/cscope.out", db_dir);
     if (access(cscope_out_path, F_OK) == 0) {
         FILE *fp = popen(cmd, "r");
@@ -2380,7 +2385,7 @@ static void handle_rename(const char *msg, const char *id)
                     if (strcmp(files[k].uri, ref_uri) == 0) { fi = k; break; }
                 if (fi < 0 && nfiles < 256) {
                     fi = nfiles++;
-                    snprintf(files[fi].uri, MAX_PATH + 8, "%s", ref_uri);
+                    snprintf(files[fi].uri, MAX_PATH * 2 + 8, "%s", ref_uri);
                 }
                 if (fi >= 0 && files[fi].count < 512)
                     files[fi].lines[files[fi].count++] = ref_line - 1;
