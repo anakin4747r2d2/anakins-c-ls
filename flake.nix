@@ -18,9 +18,29 @@
           pname = "anakins-c-ls-vscode";
           version = "0.0.1";
           src = ./vscode-extension;
+          nativeBuildInputs = [ pkgs.zip ];
           installPhase = ''
+            mkdir -p vsix/extension/out
+            cp out/extension.js vsix/extension/out/
+            cp package.json vsix/extension/
+            cat > vsix/[Content_Types].xml << '"'"'XMLEOF'"'"'
+<?xml version="1.0" encoding="utf-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="json" ContentType="application/json"/><Default Extension="js" ContentType="application/javascript"/><Default Extension="vsixmanifest" ContentType="text/xml"/></Types>
+XMLEOF
+            cat > vsix/extension.vsixmanifest << '"'"'MEOF'"'"'
+<?xml version="1.0" encoding="utf-8"?>
+<PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011">
+  <Metadata>
+    <Identity Language="en-US" Id="anakins-c-ls" Version="0.0.1" Publisher="anakin4747"/>
+    <DisplayName>anakins-c-ls</DisplayName>
+    <Description>C/C++ Language Server</Description>
+    <Tags>c,cpp,lsp</Tags>
+  </Metadata>
+  <Installation><InstallationTarget Id="Microsoft.VisualStudio.Code"/></Installation>
+  <Assets><Asset Type="Microsoft.VisualStudio.Code.Manifest" Path="extension/package.json" Addressable="true"/></Assets>
+</PackageManifest>
+MEOF
             mkdir -p $out
-            cp -r out package.json $out/
+            (cd vsix && zip -r $out/anakins-c-ls.vsix .)
           '';
         };
 
@@ -38,12 +58,12 @@
               exit 1
             fi
 
-            ext_dir="${vscode-extension}"
+            ext_vsix="${vscode-extension}/anakins-c-ls.vsix"
             profile_dir="$(mktemp -d)"
 
             codium \
               --extensions-dir "$profile_dir/extensions" \
-              --install-extension "$ext_dir" \
+              --install-extension "$ext_vsix" \
               --wait \
               "$c_file" || true
           '';
