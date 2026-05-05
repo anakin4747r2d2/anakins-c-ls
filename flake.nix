@@ -14,19 +14,10 @@
         nvim = neovim-nightly.packages.${system}.default;
         grammars = pkgs.tree-sitter.withPlugins (p: [ p.tree-sitter-c ]);
 
-        vscode-extension = pkgs.buildNpmPackage {
+        vscode-extension = pkgs.stdenv.mkDerivation {
           pname = "anakins-c-ls-vscode";
           version = "0.0.1";
           src = ./vscode-extension;
-          npmDepsHash = "sha256-RQG+vayjwNf9ORh2+qAWQrTWzx2WFmkeAxpIzz2FMt4=";
-          buildPhase = ''
-            npx esbuild src/extension.ts \
-              --bundle \
-              --outfile=out/extension.js \
-              --external:vscode \
-              --format=cjs \
-              --platform=node
-          '';
           installPhase = ''
             mkdir -p $out
             cp -r out package.json $out/
