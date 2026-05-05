@@ -51,8 +51,8 @@ MEOF
           text = ''
             set +e +u +o pipefail
             kernel_root="''${1:-$(pwd)}"
-            c_file="$(find "$kernel_root/drivers" \( -name '*.c' -o -name '*.h' \) 2>/dev/null | shuf -n 1 || true)"
-            if [[ -z "$c_file" ]]; then
+            c_files="$(find "$kernel_root/drivers" \( -name '*.c' -o -name '*.h' \) 2>/dev/null | shuf -n 10 || true)"
+            if [[ -z "$c_files" ]]; then
               echo "tryout-vscode: no .c or .h files found under $kernel_root/drivers" >&2
               echo "Run this from the root of a Linux kernel source tree." >&2
               exit 1
@@ -72,7 +72,7 @@ MEOF
               --user-data-dir "$profile_dir/data" \
               --disable-workspace-trust \
               --wait \
-              "$c_file" || true
+              $c_files || true
           '';
         };
       in
@@ -103,9 +103,9 @@ MEOF
             text = ''
               kernel_root="$(pwd)"
 
-              c_file="$(find "$kernel_root/kernel" -name '*.c' -print -quit 2>/dev/null)"
-              if [[ -z "$c_file" ]]; then
-                echo "tryout: no .c files found under $kernel_root/kernel" >&2
+              c_files="$(find "$kernel_root/drivers" \( -name '*.c' -o -name '*.h' \) 2>/dev/null | shuf -n 10 || true)"
+              if [[ -z "$c_files" ]]; then
+                echo "tryout: no .c files found under $kernel_root/drivers" >&2
                 echo "Run this from the root of a Linux kernel source tree." >&2
                 exit 1
               fi
@@ -124,7 +124,7 @@ MEOF
               })
               EOF
 
-              exec nvim -u "$nvim_config/init.lua" "$c_file"
+              exec nvim -u "$nvim_config/init.lua" $c_files
             '';
           };
 
