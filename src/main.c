@@ -1205,6 +1205,7 @@ static void handle_definition(const char *msg, const char *id)
                 }
             }
         }
+    }
 
     if (count == 0) {
         free(locs);
