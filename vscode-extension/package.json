@@ -1,0 +1,34 @@
+{
+  "name": "anakins-c-ls",
+  "displayName": "anakins-c-ls",
+  "description": "C/C++ Language Server",
+  "version": "0.0.1",
+  "publisher": "anakin4747",
+  "engines": { "vscode": "^1.75.0" },
+  "categories": ["Programming Languages"],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "c",
+        "aliases": ["C", "c"],
+        "extensions": [".c", ".h"]
+      },
+      {
+        "id": "cpp",
+        "aliases": ["C++", "cpp"],
+        "extensions": [".cpp", ".hpp", ".cc", ".cxx"]
+      }
+    ]
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.75.0",
+    "@types/node": "^18.0.0",
+    "typescript": "^5.0.0",
+    "esbuild": "^0.20.0"
+  }
+}
