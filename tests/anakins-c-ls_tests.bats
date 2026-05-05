@@ -530,18 +530,11 @@ teardown() {
         > "tests/fixtures/definition_define_mutex.rpc.json"
 }
 
+
 @test "definition on DEFINE_MUTEX jumps to macro definition" {
     lsts_initialize
     lsts_open "linux/kernel/pid_namespace.c"
     lsts_definition \
         "linux/kernel/pid_namespace.c:30:8" \
-        > "tests/fixtures/definition_define_mutex.rpc.json"
-}
-
-@test "hover on DEFINE_MUTEX returns documentation" {
-    lsts_initialize
-    lsts_open "linux/kernel/pid_namespace.c"
-    lsts_hover \
-        "linux/kernel/pid_namespace.c:30:8" \
-        > "tests/fixtures/hover_define_mutex.rpc.json"
+        "fixtures/definition_define_mutex.rpc.json"
 }

@@ -1152,12 +1152,9 @@ static void handle_definition(const char *msg, const char *id)
         collect_definitions(fn, d->text, ident, ident_len,
                             kind, uri, locs, bufsz, &count);
     } else {
-        /* For identifiers: search the enclosing function first (catches local
-         * variables).  Only if nothing is found there do we fall through to a
-         * full-file search (catches function definitions and macros) and then
-         * to included headers.
-         * For type_identifiers there is no meaningful "enclosing function"
-         * scope, so skip straight to the full-file search. */
+        /* For identifiers and type_identifiers: check local scope via AST
+         * first (catches local variables declared in the enclosing function).
+         * Then use cscope for all cross-file lookups. */
         if (strcmp(kind, "identifier") == 0) {
             TSNode fn = find_enclosing_function(root, byte);
             if (!ts_node_is_null(fn))
@@ -1165,24 +1162,49 @@ static void handle_definition(const char *msg, const char *id)
                                     kind, uri, locs, bufsz, &count);
         }
 
-        if (count == 0)
-            collect_definitions(root, d->text, ident, ident_len,
-                                kind, uri, locs, bufsz, &count);
+        if (count == 0) {
+            /* Use cscope to find the global definition. */
+            const char *file_path = uri;
+            if (strncmp(file_path, "file://", 7) == 0) file_path += 7;
 
-        /* Extract the file path from the URI (strip "file://") */
-        const char *file_path = uri;
-        if (strncmp(file_path, "file://", 7) == 0)
-            file_path += 7;
+            char db_dir[MAX_PATH];
+            find_cscope_db(file_path, db_dir, sizeof(db_dir));
 
-        char workspace_root[MAX_PATH];
-        derive_workspace_root(file_path, workspace_root, sizeof(workspace_root));
+            char cscope_out[MAX_PATH + 16];
+            snprintf(cscope_out, sizeof(cscope_out), "%s/cscope.out", db_dir);
 
-        char visited[MAX_INCLUDES][MAX_PATH];
-        int nvisited = 0;
-        search_includes(workspace_root, file_path, d->text, root,
-                        ident, ident_len, kind, locs, bufsz, &count,
-                        visited, &nvisited);
-    }
+            if (access(cscope_out, F_OK) == 0) {
+                char cmd[MAX_PATH * 2 + 256];
+                snprintf(cmd, sizeof(cmd),
+                         "cscope -dL -f '%s/cscope.out' -1 '%.*s' 2>/dev/null",
+                         db_dir, (int)ident_len, ident);
+
+                FILE *fp = popen(cmd, "r");
+                if (fp) {
+                    char line_buf[4096];
+                    while (fgets(line_buf, sizeof(line_buf), fp) && count == 0) {
+                        char ref_file[MAX_PATH], ref_func[256], ref_text[1024];
+                        int  ref_line = 0;
+                        if (sscanf(line_buf, "%s %s %d %[^\n]",
+                                   ref_file, ref_func, &ref_line, ref_text) < 3)
+                            continue;
+                        char ref_uri[MAX_PATH + 8];
+                        if (ref_file[0] == '/')
+                            snprintf(ref_uri, sizeof(ref_uri), "file://%s", ref_file);
+                        else
+                            snprintf(ref_uri, sizeof(ref_uri), "file://%s/%s", db_dir, ref_file);
+                        int lsp_line = ref_line > 0 ? ref_line - 1 : 0;
+                        int elen = snprintf(locs, bufsz,
+                            "{\"uri\":\"%s\","
+                            "\"range\":{\"start\":{\"line\":%d,\"character\":0},"
+                                       "\"end\":{\"line\":%d,\"character\":0}}}",
+                            ref_uri, lsp_line, lsp_line);
+                        if (elen > 0) count = 1;
+                    }
+                    pclose(fp);
+                }
+            }
+        }
 
     if (count == 0) {
         free(locs);
