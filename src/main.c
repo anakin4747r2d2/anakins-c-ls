@@ -1169,6 +1169,20 @@ static void handle_definition(const char *msg, const char *id)
                                 kind, uri, locs, bufsz, &count);
 
         if (count == 0) {
+            /* Search transitively included headers before falling back
+             * to cscope, to preserve accurate character offsets. */
+            const char *file_path_inc = uri;
+            if (strncmp(file_path_inc, "file://", 7) == 0) file_path_inc += 7;
+            char workspace_root[MAX_PATH];
+            derive_workspace_root(file_path_inc, workspace_root, sizeof(workspace_root));
+            char visited[MAX_INCLUDES][MAX_PATH];
+            int nvisited = 0;
+            search_includes(workspace_root, file_path_inc, d->text, root,
+                            ident, ident_len, kind, locs, bufsz, &count,
+                            visited, &nvisited);
+        }
+
+        if (count == 0) {
             /* Fall back to cscope for cross-file lookups. */
             const char *file_path = uri;
             if (strncmp(file_path, "file://", 7) == 0) file_path += 7;

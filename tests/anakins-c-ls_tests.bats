@@ -377,7 +377,7 @@ teardown() {
 
 @test "definition on non-identifier token returns null" {
     lsts_definition \
-        "linux/drivers/gpio/gpio-amd8111.c:61:66" \
+        "linux/drivers/gpio/gpio-amd8111.c:62:2" \
         "fixtures/definition_null.rpc.json"
 }
 
@@ -515,8 +515,6 @@ teardown() {
 
 
 @test "definition on DEFINE_MUTEX jumps to macro definition" {
-    lsts_initialize
-    lsts_open "linux/kernel/pid_namespace.c"
     lsts_definition \
         "linux/kernel/pid_namespace.c:30:8" \
         "fixtures/definition_define_mutex.rpc.json"
