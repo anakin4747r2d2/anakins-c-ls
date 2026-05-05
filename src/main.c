@@ -1189,7 +1189,7 @@ static void handle_definition(const char *msg, const char *id)
                         if (sscanf(line_buf, "%s %s %d %[^\n]",
                                    ref_file, ref_func, &ref_line, ref_text) < 3)
                             continue;
-                        char ref_uri[MAX_PATH + 8];
+                        char ref_uri[MAX_PATH * 2 + 8];
                         if (ref_file[0] == '/')
                             snprintf(ref_uri, sizeof(ref_uri), "file://%s", ref_file);
                         else
@@ -2094,7 +2094,7 @@ static void handle_references(const char *msg, const char *id)
     char db_dir[MAX_PATH];
     find_cscope_db(file_path, db_dir, sizeof(db_dir));
 
-    char cscope_out[MAX_PATH];
+    char cscope_out[MAX_PATH + 16];
     snprintf(cscope_out, sizeof(cscope_out), "%s/cscope.out", db_dir);
     if (access(cscope_out, F_OK) != 0) {
         char body[128];
@@ -2134,7 +2134,7 @@ static void handle_references(const char *msg, const char *id)
                    ref_file, ref_func, &ref_line, ref_text) < 3)
             continue;
 
-        char ref_uri[MAX_PATH + 8];
+        char ref_uri[MAX_PATH * 2 + 8];
         if (ref_file[0] == '/')
             snprintf(ref_uri, sizeof(ref_uri), "file://%s", ref_file);
         else
@@ -2142,7 +2142,7 @@ static void handle_references(const char *msg, const char *id)
 
         int lsp_line = ref_line > 0 ? ref_line - 1 : 0;
 
-        char entry[MAX_PATH + 8 + 256];
+        char entry[MAX_PATH * 2 + 8 + 256];
         int elen = snprintf(entry, sizeof(entry),
             "{\"uri\":\"%s\","
             "\"range\":{\"start\":{\"line\":%d,\"character\":0},"
@@ -2368,7 +2368,7 @@ static void handle_rename(const char *msg, const char *id)
                 if (sscanf(line_buf, "%s %s %d %[^\n]",
                            ref_file, ref_func, &ref_line, ref_text) < 3)
                     continue;
-                char ref_uri[MAX_PATH + 8];
+                char ref_uri[MAX_PATH * 2 + 8];
                 if (ref_file[0] == '/')
                     snprintf(ref_uri, sizeof(ref_uri), "file://%s", ref_file);
                 else
