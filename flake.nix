@@ -68,6 +68,7 @@ MEOF
             ANAKINS_C_LS_BIN="$(command -v anakins-c-ls)" codium \
               --extensions-dir "$profile_dir/extensions" \
               --user-data-dir "$profile_dir/data" \
+              --disable-workspace-trust \
               --wait \
               "$c_file" || true
           '';
