@@ -8,7 +8,8 @@ import {
 let client: LanguageClient;
 
 export function activate(_context: vscode.ExtensionContext): void {
-    const serverOptions: ServerOptions = { command: 'anakins-c-ls' };
+    const command = process.env['ANAKINS_C_LS_BIN'] ?? 'anakins-c-ls';
+    const serverOptions: ServerOptions = { command };
     const clientOptions: LanguageClientOptions = {
         documentSelector: [
             { scheme: 'file', language: 'c' },
