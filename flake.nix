@@ -18,7 +18,7 @@
           pname = "anakins-c-ls-vscode";
           version = "0.0.1";
           src = ./vscode-extension;
-          npmDepsHash = "sha256-RQG+vayjwNf9ORh2+qAWQrTWzx2WFmkeAxpIzz2FMt4=";
+          npmDepsHash = "sha256-vaR7rUhsbn36TZVXI+NgKq/NO9IUxnyBwzBIvpNxzmc=";
           nativeBuildInputs = [ pkgs.esbuild pkgs.zip ];
           buildPhase = ''
             esbuild src/extension.ts \
