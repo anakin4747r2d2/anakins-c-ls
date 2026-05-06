@@ -14,10 +14,11 @@
         nvim = neovim-nightly.packages.${system}.default;
         grammars = pkgs.tree-sitter.withPlugins (p: [ p.tree-sitter-c ]);
 
-        vscode-extension = pkgs.stdenv.mkDerivation {
+        vscode-extension = pkgs.buildNpmPackage {
           pname = "anakins-c-ls-vscode";
           version = "0.0.1";
           src = ./vscode-extension;
+          npmDepsHash = "sha256-RQG+vayjwNf9ORh2+qAWQrTWzx2WFmkeAxpIzz2FMt4=";
           nativeBuildInputs = [ pkgs.esbuild pkgs.zip ];
           buildPhase = ''
             esbuild src/extension.ts \
@@ -25,7 +26,8 @@
               --outfile=out/extension.js \
               --external:vscode \
               --format=cjs \
-              --platform=node
+              --platform=node \
+              --packages=bundle
           '';
           installPhase = ''
             mkdir -p vsix/extension/out
@@ -34,7 +36,7 @@
             cat > 'vsix/[Content_Types].xml' << 'XMLEOF'
 <?xml version="1.0" encoding="utf-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="json" ContentType="application/json"/><Default Extension="js" ContentType="application/javascript"/><Default Extension="vsixmanifest" ContentType="text/xml"/></Types>
 XMLEOF
-            cat > vsix/extension.vsixmanifest << '"'"'MEOF'"'"'
+            cat > vsix/extension.vsixmanifest << 'MEOF'
 <?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011">
   <Metadata>
