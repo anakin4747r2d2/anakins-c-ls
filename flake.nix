@@ -77,7 +77,11 @@ MEOF
               --extensions-dir "$profile_dir/extensions" \
               --install-extension "$ext_vsix"
 
-            ANAKINS_C_LS_BIN="$(command -v anakins-c-ls)" codium \
+            bin_dir="$(mktemp -d)"
+            ln -s "$(command -v anakins-c-ls)" "$bin_dir/anakins-c-ls"
+            ANAKINS_C_LS_BIN="$bin_dir/anakins-c-ls"
+            export ANAKINS_C_LS_BIN
+            PATH="$bin_dir:$PATH" codium \
               --extensions-dir "$profile_dir/extensions" \
               --user-data-dir "$profile_dir/data" \
               --disable-workspace-trust \
