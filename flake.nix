@@ -14,21 +14,11 @@
         nvim = neovim-nightly.packages.${system}.default;
         grammars = pkgs.tree-sitter.withPlugins (p: [ p.tree-sitter-c ]);
 
-        vscode-extension = pkgs.buildNpmPackage {
+        vscode-extension = pkgs.stdenv.mkDerivation {
           pname = "anakins-c-ls-vscode";
           version = "0.0.1";
           src = ./vscode-extension;
-          npmDepsHash = "sha256-vaR7rUhsbn36TZVXI+NgKq/NO9IUxnyBwzBIvpNxzmc=";
-          nativeBuildInputs = [ pkgs.esbuild pkgs.zip ];
-          buildPhase = ''
-            esbuild src/extension.ts \
-              --bundle \
-              --outfile=out/extension.js \
-              --external:vscode \
-              --format=cjs \
-              --platform=node \
-              --packages=bundle
-          '';
+          nativeBuildInputs = [ pkgs.zip ];
           installPhase = ''
             mkdir -p vsix/extension/out
             cp out/extension.js vsix/extension/out/
