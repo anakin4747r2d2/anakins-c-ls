@@ -18,7 +18,15 @@
           pname = "anakins-c-ls-vscode";
           version = "0.0.1";
           src = ./vscode-extension;
-          nativeBuildInputs = [ pkgs.zip ];
+          nativeBuildInputs = [ pkgs.esbuild pkgs.zip ];
+          buildPhase = ''
+            esbuild src/extension.ts \
+              --bundle \
+              --outfile=out/extension.js \
+              --external:vscode \
+              --format=cjs \
+              --platform=node
+          '';
           installPhase = ''
             mkdir -p vsix/extension/out
             cp out/extension.js vsix/extension/out/
