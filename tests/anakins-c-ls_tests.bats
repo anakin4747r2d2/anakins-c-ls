@@ -19,6 +19,10 @@ teardown() {
     lsts_stop
 }
 
+@test "cscope is available" {
+    command -v cscope
+}
+
 @test "initializes successfully" {
     lsts_initialize
 }
