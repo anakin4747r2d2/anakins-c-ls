@@ -519,3 +519,9 @@ teardown() {
         "linux/kernel/pid_namespace.c:30:8" \
         "fixtures/definition_define_mutex.rpc.json"
 }
+
+@test "hover on struct field shows type and docstring" {
+    lsts_hover \
+        "linux/include/linux/irq.h:150:10" \
+        "fixtures/hover_field_handler_data.rpc.json"
+}
