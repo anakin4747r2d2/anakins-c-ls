@@ -1590,7 +1590,7 @@ static void handle_hover(const char *msg, const char *id)
         else                         send_null_result(id);
     } else if (type_is("field_identifier")) {
         /* Struct field: show "type *name" and extract @field: doc from the
-         * preceding kernel-doc comment (/** ... */) if present. */
+         * preceding kernel-doc block comment if present. */
 
         /* Walk up to the enclosing field_declaration. */
         TSNode fdecl = node;
@@ -1624,7 +1624,7 @@ static void handle_hover(const char *msg, const char *id)
             type_text[j2] = '\0';
         }
 
-        /* Search backwards for a kernel-doc block comment (/** ... */) that
+        /* Search backwards for a kernel-doc block comment that
          * precedes the enclosing struct and contains "@fieldname:". */
         char doc_text[512] = "";
         {
@@ -1632,10 +1632,10 @@ static void handle_hover(const char *msg, const char *id)
             uint32_t anchor = ts_node_is_null(fdecl)
                               ? tok_start : ts_node_start_byte(fdecl);
 
-            /* Scan backwards for "*/" closing a comment. */
+            /* Scan backwards for end-of-comment marker. */
             const char *src = d->text;
             int found = 0;
-            /* Find the last '*/' before anchor. */
+            /* Find the last end-of-comment before anchor. */
             const char *end_marker = NULL;
             for (int bi = (int)anchor - 2; bi >= 1 && !found; bi--) {
                 if (src[bi] == '/' && src[bi - 1] == '*') {
