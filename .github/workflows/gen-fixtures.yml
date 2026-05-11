@@ -45,52 +45,17 @@ jobs:
         run: nix develop --command bash -c 'cd tests/linux && cscope -bRq'
       - name: Add snapshot tests
         run: |
-          cat >> tests/anakins-c-ls_tests.bats << 'BATSEOF'
+          FIXTURES="$(pwd)/tests/fixtures"
+          cat >> tests/anakins-c-ls_tests.bats << BATSEOF
 
-          @test "SNAPSHOT call_hierarchy_prepare try_one_irq" {
-              lsts_call_hierarchy_prepare \
-                  "linux/kernel/irq/spurious.c:28:13" \
-                  > "tests/fixtures/call_hierarchy_prepare_try_one_irq.rpc.json"
-          }
-          @test "SNAPSHOT goto_incoming_calls try_one_irq" {
-              lsts_goto_incoming_calls \
-                  "linux/kernel/irq/spurious.c:28:13" \
-                  > "tests/fixtures/incoming_calls_try_one_irq.rpc.json"
-          }
-          @test "SNAPSHOT goto_outgoing_calls misrouted_irq" {
-              lsts_goto_outgoing_calls \
-                  "linux/kernel/irq/spurious.c:80:12" \
-                  > "tests/fixtures/outgoing_calls_misrouted_irq.rpc.json"
-          }
-          @test "SNAPSHOT document_symbols spurious" {
-              lsts_document_symbols \
-                  "linux/kernel/irq/spurious.c" \
-                  > "tests/fixtures/document_symbols_spurious.rpc.json"
-          }
-          @test "SNAPSHOT references try_one_irq" {
-              lsts_references \
-                  "linux/kernel/irq/spurious.c:28:13" \
-                  > "tests/fixtures/references_try_one_irq.rpc.json"
-          }
-          @test "SNAPSHOT rename try_one_irq" {
-              lsts_rename \
-                  "linux/kernel/irq/spurious.c:28:13" "try_one_interrupt" \
-                  > "tests/fixtures/rename_try_one_irq.rpc.json"
-          }
-          @test "SNAPSHOT formatting spurious" {
-              lsts_formatting \
-                  "linux/kernel/irq/spurious.c" \
-                  > "tests/fixtures/formatting_spurious.rpc.json"
-          }
-          @test "SNAPSHOT completion try" {
-              lsts_completion \
-                  "linux/kernel/irq/spurious.c:28:4" \
-                  > "tests/fixtures/completion_try.rpc.json"
-          }
-          @test "SNAPSHOT workspace symbol try_one_irq" {
-              lsts_goto_incoming_calls \
-                  "linux/kernel/irq/spurious.c:28:13"
-          }
+          @test "SNAPSHOT call_hierarchy_prepare try_one_irq" { lsts_call_hierarchy_prepare "linux/kernel/irq/spurious.c:28:13" > "$FIXTURES/call_hierarchy_prepare_try_one_irq.rpc.json"; }
+          @test "SNAPSHOT goto_incoming_calls try_one_irq" { lsts_goto_incoming_calls "linux/kernel/irq/spurious.c:28:13" > "$FIXTURES/incoming_calls_try_one_irq.rpc.json"; }
+          @test "SNAPSHOT goto_outgoing_calls misrouted_irq" { lsts_goto_outgoing_calls "linux/kernel/irq/spurious.c:80:12" > "$FIXTURES/outgoing_calls_misrouted_irq.rpc.json"; }
+          @test "SNAPSHOT document_symbols spurious" { lsts_document_symbols "linux/kernel/irq/spurious.c" > "$FIXTURES/document_symbols_spurious.rpc.json"; }
+          @test "SNAPSHOT references try_one_irq" { lsts_references "linux/kernel/irq/spurious.c:28:13" > "$FIXTURES/references_try_one_irq.rpc.json"; }
+          @test "SNAPSHOT rename try_one_irq" { lsts_rename "linux/kernel/irq/spurious.c:28:13" "try_one_interrupt" > "$FIXTURES/rename_try_one_irq.rpc.json"; }
+          @test "SNAPSHOT formatting spurious" { lsts_formatting "linux/kernel/irq/spurious.c" > "$FIXTURES/formatting_spurious.rpc.json"; }
+          @test "SNAPSHOT completion try" { lsts_completion "linux/kernel/irq/spurious.c:28:4" > "$FIXTURES/completion_try.rpc.json"; }
           BATSEOF
       - name: Run snapshot tests
         run: nix develop --command make filter FILTER="SNAPSHOT" || true
