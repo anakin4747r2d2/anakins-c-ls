@@ -395,53 +395,45 @@ teardown() {
 }
 
 @test "callHierarchy/prepare on function name returns item" {
-    lsts_initialize
-    lsts_open "linux/kernel/irq/spurious.c"
-    lsts_call_hierarchy_prepare "linux/kernel/irq/spurious.c:28:13"
-    echo "$LSTS_RESPONSE" | jq -e '.result[0].name == "try_one_irq"' > /dev/null
-    echo "$LSTS_RESPONSE" | jq -e '.result[0].kind == 12' > /dev/null
+    lsts_call_hierarchy_prepare \
+        "linux/kernel/irq/spurious.c:28:13" \
+        "fixtures/call_hierarchy_prepare_try_one_irq.rpc.json"
 }
 
 @test "callHierarchy/prepare on non-function keyword returns null" {
-    lsts_initialize
-    lsts_open "linux/kernel/irq/spurious.c"
-    lsts_call_hierarchy_prepare "linux/kernel/irq/spurious.c:1:1"
-    echo "$LSTS_RESPONSE" | jq -e '.result == null' > /dev/null
+    lsts_call_hierarchy_prepare \
+        "linux/kernel/irq/spurious.c:1:1" \
+        "fixtures/call_hierarchy_prepare_null.rpc.json"
 }
 
 @test "callHierarchy/incomingCalls for try_one_irq includes misrouted_irq" {
-    lsts_initialize
-    lsts_open "linux/kernel/irq/spurious.c"
-    lsts_goto_incoming_calls "linux/kernel/irq/spurious.c:28:13"
-    echo "$LSTS_RESPONSE" | jq -e '[.result[].from.name] | any(. == "misrouted_irq")' > /dev/null
+    lsts_goto_incoming_calls \
+        "linux/kernel/irq/spurious.c:28:13" \
+        "fixtures/incoming_calls_try_one_irq.rpc.json"
 }
 
 @test "callHierarchy/incomingCalls for try_one_irq includes poll_spurious_irqs" {
-    lsts_initialize
-    lsts_open "linux/kernel/irq/spurious.c"
-    lsts_goto_incoming_calls "linux/kernel/irq/spurious.c:28:13"
-    echo "$LSTS_RESPONSE" | jq -e '[.result[].from.name] | any(. == "poll_spurious_irqs")' > /dev/null
+    lsts_goto_incoming_calls \
+        "linux/kernel/irq/spurious.c:28:13" \
+        "fixtures/incoming_calls_try_one_irq.rpc.json"
 }
 
 @test "callHierarchy/outgoingCalls for misrouted_irq includes try_one_irq" {
-    lsts_initialize
-    lsts_open "linux/kernel/irq/spurious.c"
-    lsts_goto_outgoing_calls "linux/kernel/irq/spurious.c:80:12"
-    echo "$LSTS_RESPONSE" | jq -e '[.result[].to.name] | any(. == "try_one_irq")' > /dev/null
+    lsts_goto_outgoing_calls \
+        "linux/kernel/irq/spurious.c:80:12" \
+        "fixtures/outgoing_calls_misrouted_irq.rpc.json"
 }
 
 @test "textDocument/documentSymbol lists function symbols in kernel file" {
-    lsts_initialize
-    lsts_open "linux/kernel/irq/spurious.c"
-    lsts_document_symbols "linux/kernel/irq/spurious.c"
-    echo "$LSTS_RESPONSE" | jq -e '[.result[] | select(.kind == 12) | .name] | any(. == "try_one_irq")' > /dev/null
+    lsts_document_symbols \
+        "linux/kernel/irq/spurious.c" \
+        "fixtures/document_symbols_spurious.rpc.json"
 }
 
 @test "textDocument/documentSymbol lists macro symbols in kernel file" {
-    lsts_initialize
-    lsts_open "linux/kernel/irq/spurious.c"
-    lsts_document_symbols "linux/kernel/irq/spurious.c"
-    echo "$LSTS_RESPONSE" | jq -e '[.result[] | select(.kind == 14) | .name] | any(. == "POLL_SPURIOUS_IRQ_INTERVAL")' > /dev/null
+    lsts_document_symbols \
+        "linux/kernel/irq/spurious.c" \
+        "fixtures/document_symbols_spurious.rpc.json"
 }
 
 @test "initialize response declares referencesProvider" {
@@ -449,12 +441,9 @@ teardown() {
 }
 
 @test "textDocument/references finds all call sites of try_one_irq" {
-    lsts_initialize
-    lsts_open "linux/kernel/irq/spurious.c"
-    # try_one_irq is defined on line 28, name at col 13
-    lsts_references "linux/kernel/irq/spurious.c:28:13"
-    # misrouted_irq and poll_spurious_irqs both call try_one_irq
-    echo "$LSTS_RESPONSE" | jq -e '.result | length >= 2' > /dev/null
+    lsts_references \
+        "linux/kernel/irq/spurious.c:28:13" \
+        "fixtures/references_try_one_irq.rpc.json"
 }
 
 # workspace/symbol tests
@@ -467,7 +456,7 @@ teardown() {
     lsts_open "linux/kernel/irq/spurious.c"
     lsts_request "workspace/symbol" '{"query":"try_one_irq"}'
     lsts_recv_response
-    echo "$LSTS_RESPONSE" | jq -e '[.result[] | select(.name == "try_one_irq")] | length >= 1' > /dev/null
+    _lsts_fixture_or_print "fixtures/workspace_symbol_try_one_irq.rpc.json"
 }
 
 # textDocument/rename tests
@@ -476,10 +465,9 @@ teardown() {
 }
 
 @test "textDocument/rename returns workspace edit" {
-    lsts_initialize
-    lsts_open "linux/kernel/irq/spurious.c"
-    lsts_rename "linux/kernel/irq/spurious.c:28:13" "try_one_interrupt"
-    echo "$LSTS_RESPONSE" | jq -e '.result.changes | keys | length >= 1' > /dev/null
+    lsts_rename \
+        "linux/kernel/irq/spurious.c:28:13" "try_one_interrupt" \
+        "fixtures/rename_try_one_irq.rpc.json"
 }
 
 # textDocument/formatting tests
@@ -488,10 +476,9 @@ teardown() {
 }
 
 @test "textDocument/formatting returns text edits" {
-    lsts_initialize
-    lsts_open "linux/kernel/irq/spurious.c"
-    lsts_formatting "linux/kernel/irq/spurious.c"
-    echo "$LSTS_RESPONSE" | jq -e '.result | type == "array"' > /dev/null
+    lsts_formatting \
+        "linux/kernel/irq/spurious.c" \
+        "fixtures/formatting_spurious.rpc.json"
 }
 
 # textDocument/completion tests
@@ -500,21 +487,19 @@ teardown() {
 }
 
 @test "textDocument/completion returns items for partial identifier" {
-    lsts_initialize
-    lsts_open "linux/kernel/irq/spurious.c"
-    # "try" prefix should match try_one_irq
-    lsts_completion "linux/kernel/irq/spurious.c:28:4"
-    echo "$LSTS_RESPONSE" | jq -e '.result.items | length >= 1' > /dev/null
+    lsts_completion \
+        "linux/kernel/irq/spurious.c:28:4" \
+        "fixtures/completion_try.rpc.json"
 }
 
 @test "cscope.out is built automatically on initialize" {
     lsts_initialize
     # Give the background cscope build a moment
     sleep 3
-    # The server should still be running (not crashed) and responsive
-    lsts_request "workspace/symbol" '{"query":""}'
+    # Verify cscope is working by querying a known symbol
+    lsts_request "workspace/symbol" '{"query":"try_one_irq"}'
     lsts_recv_response
-    echo "$LSTS_RESPONSE" | jq -e '.result | type == "array"' > /dev/null
+    _lsts_fixture_or_print "fixtures/workspace_symbol_try_one_irq.rpc.json"
 }
 
 

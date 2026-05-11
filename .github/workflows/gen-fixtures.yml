@@ -55,7 +55,7 @@ jobs:
           @test "SNAPSHOT references try_one_irq" { lsts_references "linux/kernel/irq/spurious.c:28:13" > "$FIXTURES/references_try_one_irq.rpc.json"; }
           @test "SNAPSHOT rename try_one_irq" { lsts_rename "linux/kernel/irq/spurious.c:28:13" "try_one_interrupt" > "$FIXTURES/rename_try_one_irq.rpc.json"; }
           @test "SNAPSHOT formatting spurious" { lsts_formatting "linux/kernel/irq/spurious.c" > "$FIXTURES/formatting_spurious.rpc.json"; }
-          @test "SNAPSHOT completion try" { lsts_completion "linux/kernel/irq/spurious.c:28:4" > "$FIXTURES/completion_try.rpc.json"; }
+          @test "SNAPSHOT workspace symbol try_one_irq" { lsts_initialize; lsts_open "linux/kernel/irq/spurious.c"; lsts_request "workspace/symbol" '{"query":"try_one_irq"}'; lsts_recv_response; _lsts_normalize; echo "$LSTS_RESPONSE" > "$FIXTURES/workspace_symbol_try_one_irq.rpc.json"; }
           BATSEOF
       - name: Run snapshot tests
         run: nix develop --command make filter FILTER="SNAPSHOT" || true
