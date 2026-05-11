@@ -53,7 +53,7 @@ MEOF
 
         tryout-vscode = pkgs.writeShellApplication {
           name = "tryout-vscode";
-          runtimeInputs = [ pkgs.vscodium self.packages.${system}.default ];
+          runtimeInputs = [ pkgs.vscodium pkgs.cscope self.packages.${system}.default ];
           checkPhase = "";
           text = ''
             set +e +u +o pipefail
@@ -106,7 +106,7 @@ MEOF
 
           tryout = pkgs.writeShellApplication {
             name = "tryout";
-            runtimeInputs = [ pkgs.neovim pkgs.gnused pkgs.gnugrep self.packages.${system}.default ];
+            runtimeInputs = [ pkgs.neovim pkgs.gnused pkgs.gnugrep pkgs.cscope self.packages.${system}.default ];
             checkPhase = "";
             text = ''
               kernel_root="$(pwd)"
