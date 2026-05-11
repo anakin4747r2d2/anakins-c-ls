@@ -456,6 +456,7 @@ teardown() {
     lsts_open "linux/kernel/irq/spurious.c"
     lsts_request "workspace/symbol" '{"query":"try_one_irq"}'
     lsts_recv_response
+    _lsts_normalize
     _lsts_fixture_or_print "fixtures/workspace_symbol_try_one_irq.rpc.json"
 }
 
@@ -499,6 +500,7 @@ teardown() {
     # Verify cscope is working by querying a known symbol
     lsts_request "workspace/symbol" '{"query":"try_one_irq"}'
     lsts_recv_response
+    _lsts_normalize
     _lsts_fixture_or_print "fixtures/workspace_symbol_try_one_irq.rpc.json"
 }
 

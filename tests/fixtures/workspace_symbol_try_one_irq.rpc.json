@@ -1,1 +1,1 @@
-
+{"jsonrpc":"2.0","id":2,"result":[{"name":"try_one_irq","kind":12,"location":{"uri":"file://$LSTS_ROOT/linux/kernel/irq/spurious.c","range":{"start":{"line":27,"character":0},"end":{"line":77,"character":1}}}}]}
