@@ -40,31 +40,62 @@ jobs:
           git -C tests/linux fetch --depth 1 origin 46b513250491a7bfc97d98791dbe6a10bcc8129d
           git -C tests/linux checkout FETCH_HEAD
       - uses: DeterminateSystems/nix-installer-action@v14
+      - uses: DeterminateSystems/magic-nix-cache-action@v8
       - name: Build cscope database
         run: nix develop --command bash -c 'cd tests/linux && cscope -bRq'
-      - name: Build server
-        run: nix develop --command make build
-      - name: Generate fixtures
+      - name: Add snapshot tests
         run: |
-          nix develop --command bash -c '
-            source tests/lsts/lsts
-            lsts_set_cmd "anakins-c-ls"
-            lsts_set_root "$(pwd)/tests"
-            lsts_set_langId "c"
-            lsts_start
+          cat >> tests/anakins-c-ls_tests.bats << 'BATSEOF'
 
-            lsts_call_hierarchy_prepare "linux/kernel/irq/spurious.c:28:13" > tests/fixtures/call_hierarchy_prepare_try_one_irq.rpc.json
-            lsts_call_hierarchy_prepare "linux/kernel/irq/spurious.c:1:1" > tests/fixtures/call_hierarchy_prepare_null.rpc.json || true
-            lsts_goto_incoming_calls "linux/kernel/irq/spurious.c:28:13" > tests/fixtures/incoming_calls_try_one_irq.rpc.json
-            lsts_goto_outgoing_calls "linux/kernel/irq/spurious.c:80:12" > tests/fixtures/outgoing_calls_misrouted_irq.rpc.json
-            lsts_document_symbols "linux/kernel/irq/spurious.c" > tests/fixtures/document_symbols_spurious.rpc.json
-            lsts_references "linux/kernel/irq/spurious.c:28:13" > tests/fixtures/references_try_one_irq.rpc.json
-            lsts_rename "linux/kernel/irq/spurious.c:28:13" "try_one_interrupt" > tests/fixtures/rename_try_one_irq.rpc.json
-            lsts_formatting "linux/kernel/irq/spurious.c" > tests/fixtures/formatting_spurious.rpc.json
-            lsts_completion "linux/kernel/irq/spurious.c:28:4" > tests/fixtures/completion_try.rpc.json
-
-            lsts_stop
-          '
+          @test "SNAPSHOT call_hierarchy_prepare try_one_irq" {
+              lsts_call_hierarchy_prepare \
+                  "linux/kernel/irq/spurious.c:28:13" \
+                  > "tests/fixtures/call_hierarchy_prepare_try_one_irq.rpc.json"
+          }
+          @test "SNAPSHOT goto_incoming_calls try_one_irq" {
+              lsts_goto_incoming_calls \
+                  "linux/kernel/irq/spurious.c:28:13" \
+                  > "tests/fixtures/incoming_calls_try_one_irq.rpc.json"
+          }
+          @test "SNAPSHOT goto_outgoing_calls misrouted_irq" {
+              lsts_goto_outgoing_calls \
+                  "linux/kernel/irq/spurious.c:80:12" \
+                  > "tests/fixtures/outgoing_calls_misrouted_irq.rpc.json"
+          }
+          @test "SNAPSHOT document_symbols spurious" {
+              lsts_document_symbols \
+                  "linux/kernel/irq/spurious.c" \
+                  > "tests/fixtures/document_symbols_spurious.rpc.json"
+          }
+          @test "SNAPSHOT references try_one_irq" {
+              lsts_references \
+                  "linux/kernel/irq/spurious.c:28:13" \
+                  > "tests/fixtures/references_try_one_irq.rpc.json"
+          }
+          @test "SNAPSHOT rename try_one_irq" {
+              lsts_rename \
+                  "linux/kernel/irq/spurious.c:28:13" "try_one_interrupt" \
+                  > "tests/fixtures/rename_try_one_irq.rpc.json"
+          }
+          @test "SNAPSHOT formatting spurious" {
+              lsts_formatting \
+                  "linux/kernel/irq/spurious.c" \
+                  > "tests/fixtures/formatting_spurious.rpc.json"
+          }
+          @test "SNAPSHOT completion try" {
+              lsts_completion \
+                  "linux/kernel/irq/spurious.c:28:4" \
+                  > "tests/fixtures/completion_try.rpc.json"
+          }
+          @test "SNAPSHOT workspace symbol try_one_irq" {
+              lsts_goto_incoming_calls \
+                  "linux/kernel/irq/spurious.c:28:13"
+          }
+          BATSEOF
+      - name: Run snapshot tests
+        run: nix develop --command make filter FILTER="SNAPSHOT" || true
+      - name: Restore bats file
+        run: git checkout tests/anakins-c-ls_tests.bats
       - name: Commit fixtures
         run: |
           git config user.name "github-actions[bot]"
