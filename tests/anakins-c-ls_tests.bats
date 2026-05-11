@@ -443,6 +443,7 @@ teardown() {
 @test "textDocument/references finds all call sites of try_one_irq" {
     lsts_references \
         "linux/kernel/irq/spurious.c:28:13" \
+        false \
         "fixtures/references_try_one_irq.rpc.json"
 }
 
@@ -479,6 +480,7 @@ teardown() {
 @test "textDocument/formatting returns text edits" {
     lsts_formatting \
         "linux/kernel/irq/spurious.c" \
+        4 true \
         "fixtures/formatting_spurious.rpc.json"
 }
 
@@ -495,9 +497,10 @@ teardown() {
 
 @test "cscope.out is built automatically on initialize" {
     lsts_initialize
+    lsts_open "linux/kernel/irq/spurious.c"
     # Give the background cscope build a moment
     sleep 3
-    # Verify cscope is working by querying a known symbol
+    # Verify the server is still responsive after cscope build
     lsts_request "workspace/symbol" '{"query":"try_one_irq"}'
     lsts_recv_response
     _lsts_normalize
