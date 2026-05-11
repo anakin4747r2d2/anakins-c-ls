@@ -6,7 +6,7 @@
   "publisher": "anakin4747",
   "engines": { "vscode": "^1.75.0" },
   "categories": ["Programming Languages"],
-  "activationEvents": [],
+  "activationEvents": ["onLanguage:c", "onLanguage:cpp"],
   "main": "./out/extension.js",
   "contributes": {
     "languages": [
