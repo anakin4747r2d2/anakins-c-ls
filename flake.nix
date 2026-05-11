@@ -4,14 +4,12 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-    neovim-nightly.url = "github:nix-community/neovim-nightly-overlay";
   };
 
-  outputs = { self, nixpkgs, flake-utils, neovim-nightly }:
+  outputs = { self, nixpkgs, flake-utils }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-        nvim = neovim-nightly.packages.${system}.default;
         grammars = pkgs.tree-sitter.withPlugins (p: [ p.tree-sitter-c ]);
 
         vscode-extension = pkgs.buildNpmPackage {
@@ -111,7 +109,7 @@ MEOF
 
           tryout = pkgs.writeShellApplication {
             name = "tryout";
-            runtimeInputs = [ pkgs.gnused pkgs.gnugrep nvim self.packages.${system}.default ];
+            runtimeInputs = [ pkgs.neovim pkgs.gnused pkgs.gnugrep self.packages.${system}.default ];
             checkPhase = "";
             text = ''
               kernel_root="$(pwd)"
@@ -137,7 +135,7 @@ MEOF
               })
               EOF
 
-              exec nvim -u "$nvim_config/init.lua" $c_files
+              exec ${pkgs.neovim}/bin/nvim -u "$nvim_config/init.lua" $c_files
             '';
           };
 
