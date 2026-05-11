@@ -1588,6 +1588,108 @@ static void handle_hover(const char *msg, const char *id)
         else if (tok_is("#pragma"))  send_hover_result(id, PRAGMA_DOC);
         else if (tok_is("#endif"))   send_hover_result(id, ENDIF_DOC);
         else                         send_null_result(id);
+    } else if (type_is("field_identifier")) {
+        /* Struct field: show "type *name" and extract @field: doc from the
+         * preceding kernel-doc comment (/** ... */) if present. */
+
+        /* Walk up to the enclosing field_declaration. */
+        TSNode fdecl = node;
+        while (!ts_node_is_null(fdecl) &&
+               strcmp(ts_node_type(fdecl), "field_declaration") != 0)
+            fdecl = ts_node_parent(fdecl);
+
+        char type_text[256] = "";
+        if (!ts_node_is_null(fdecl)) {
+            /* Collect the full text of the field_declaration, normalise
+             * runs of whitespace (including tabs) to a single space, and
+             * strip a trailing semicolon. */
+            uint32_t fs = ts_node_start_byte(fdecl);
+            uint32_t fe = ts_node_end_byte(fdecl);
+            /* fe points past the ';'; skip it */
+            while (fe > fs && (d->text[fe - 1] == ';' ||
+                               d->text[fe - 1] == ' ' ||
+                               d->text[fe - 1] == '\t' ||
+                               d->text[fe - 1] == '\n'))
+                fe--;
+            size_t j2 = 0;
+            int in_ws = 0;
+            for (uint32_t k = fs; k < fe && j2 < sizeof(type_text) - 1; k++) {
+                char c = d->text[k];
+                if (c == ' ' || c == '\t' || c == '\n') {
+                    if (!in_ws) { type_text[j2++] = ' '; in_ws = 1; }
+                } else {
+                    type_text[j2++] = c; in_ws = 0;
+                }
+            }
+            type_text[j2] = '\0';
+        }
+
+        /* Search backwards for a kernel-doc block comment (/** ... */) that
+         * precedes the enclosing struct and contains "@fieldname:". */
+        char doc_text[512] = "";
+        {
+            /* Use the field_declaration start or the cursor byte as anchor. */
+            uint32_t anchor = ts_node_is_null(fdecl)
+                              ? tok_start : ts_node_start_byte(fdecl);
+
+            /* Scan backwards for "*/" closing a comment. */
+            const char *src = d->text;
+            int found = 0;
+            /* Find the last '*/' before anchor. */
+            const char *end_marker = NULL;
+            for (int bi = (int)anchor - 2; bi >= 1 && !found; bi--) {
+                if (src[bi] == '/' && src[bi - 1] == '*') {
+                    end_marker = src + bi + 1; /* points past '/' */
+                    found = 1;
+                }
+            }
+            if (found && end_marker) {
+                /* Find the matching '/**' opening. */
+                const char *start_marker = end_marker;
+                for (int bi = (int)(end_marker - src) - 2; bi >= 2; bi--) {
+                    if (src[bi] == '*' && src[bi - 1] == '*' && src[bi - 2] == '/') {
+                        start_marker = src + bi - 2;
+                        break;
+                    }
+                }
+                /* Search for "@fieldname:" inside the comment. */
+                char needle[256];
+                snprintf(needle, sizeof(needle), "@%.*s:", (int)tok_len, tok);
+                const char *hit = strstr(start_marker, needle);
+                if (hit && hit < end_marker) {
+                    /* Skip "@fieldname: \t" */
+                    const char *p2 = hit + strlen(needle);
+                    while (*p2 == ' ' || *p2 == '\t') p2++;
+                    /* Copy until end-of-line or end of comment */
+                    size_t di = 0;
+                    while (*p2 && *p2 != '\n' && *p2 != '\r' &&
+                           di < sizeof(doc_text) - 1) {
+                        /* Stop at the " */" pattern */
+                        if (p2[0] == '*' && p2[1] == '/') break;
+                        doc_text[di++] = *p2++;
+                    }
+                    /* Trim trailing whitespace */
+                    while (di > 0 && (doc_text[di - 1] == ' ' ||
+                                      doc_text[di - 1] == '\t'))
+                        di--;
+                    doc_text[di] = '\0';
+                }
+            }
+        }
+
+        if (type_text[0] == '\0') {
+            send_null_result(id);
+        } else if (doc_text[0] != '\0') {
+            char *md2 = malloc(strlen(type_text) + strlen(doc_text) + 32);
+            if (!md2) { send_null_result(id); return; }
+            sprintf(md2, "```c\n%s\n```\n%s", type_text, doc_text);
+            send_hover_result(id, md2);
+            free(md2);
+        } else {
+            char md3[512];
+            snprintf(md3, sizeof(md3), "```c\n%s\n```", type_text);
+            send_hover_result(id, md3);
+        }
     } else if (type_is("type_identifier")) {
         /* User-defined type: find the definition and show the token name
          * as a code-block hover. */
@@ -1612,6 +1714,34 @@ static void handle_hover(const char *msg, const char *id)
                             tok, tok_len, "type_identifier",
                             hover_buf, hbufsz, &hcount,
                             visited, &nvisited);
+        }
+
+        if (hcount == 0) {
+            /* Fall back to cscope for cross-file typedef lookups. */
+            const char *fp = uri;
+            if (strncmp(fp, "file://", 7) == 0) fp += 7;
+            char db_dir[MAX_PATH];
+            find_cscope_db(fp, db_dir, sizeof(db_dir));
+            char cscope_out[MAX_PATH + 16];
+            snprintf(cscope_out, sizeof(cscope_out), "%s/cscope.out", db_dir);
+            if (access(cscope_out, F_OK) == 0) {
+                char cmd[MAX_PATH * 2 + 256];
+                snprintf(cmd, sizeof(cmd),
+                         "cscope -dL -f '%s/cscope.out' -1 '%.*s' 2>/dev/null",
+                         db_dir, (int)tok_len, tok);
+                FILE *cfp = popen(cmd, "r");
+                if (cfp) {
+                    char lbuf[4096];
+                    while (fgets(lbuf, sizeof(lbuf), cfp) && hcount == 0) {
+                        char ref_file[MAX_PATH], ref_func[256], ref_text[1024];
+                        int ref_line = 0;
+                        if (sscanf(lbuf, "%s %s %d %[^\n]",
+                                   ref_file, ref_func, &ref_line, ref_text) >= 3)
+                            hcount = 1;
+                    }
+                    pclose(cfp);
+                }
+            }
         }
 
         if (hcount == 0)

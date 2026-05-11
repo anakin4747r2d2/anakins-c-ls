@@ -1,0 +1,74 @@
+name: Generate fixtures
+
+on: workflow_dispatch
+
+jobs:
+  gen:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Init lsts submodule
+        run: git submodule update --init tests/lsts
+      - name: Sparse-checkout linux
+        run: |
+          git submodule init tests/linux
+          git -C tests/linux init
+          git -C tests/linux remote add origin git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
+          git -C tests/linux config core.sparseCheckout true
+          mkdir -p tests/linux/.git/info
+          cat > tests/linux/.git/info/sparse-checkout << 'SPEOF'
+          arch/arm/kernel/unwind.c
+          arch/arm/lib/xor-neon.c
+          arch/arm/mach-exynos/platsmp.c
+          arch/parisc/kernel/
+          arch/powerpc/kvm/book3s_paired_singles.c
+          crypto/shash.c
+          drivers/gpio/gpio-amd8111.c
+          include/
+          kernel/debug/kdb/kdb_io.c
+          kernel/irq/
+          kernel/pid_namespace.c
+          kernel/sched/core.c
+          kernel/sched/rt.c
+          kernel/time/sleep_timeout.c
+          kernel/umh.c
+          SPEOF
+          git -C tests/linux fetch --depth 1 origin 46b513250491a7bfc97d98791dbe6a10bcc8129d
+          git -C tests/linux checkout FETCH_HEAD
+      - uses: DeterminateSystems/nix-installer-action@v14
+      - name: Build cscope database
+        run: nix develop --command bash -c 'cd tests/linux && cscope -bRq'
+      - name: Build server
+        run: nix develop --command make build
+      - name: Generate fixtures
+        run: |
+          nix develop --command bash -c '
+            source tests/lsts/lsts
+            lsts_set_cmd "anakins-c-ls"
+            lsts_set_root "$(pwd)/tests"
+            lsts_set_langId "c"
+            lsts_start
+
+            lsts_call_hierarchy_prepare "linux/kernel/irq/spurious.c:28:13" > tests/fixtures/call_hierarchy_prepare_try_one_irq.rpc.json
+            lsts_call_hierarchy_prepare "linux/kernel/irq/spurious.c:1:1" > tests/fixtures/call_hierarchy_prepare_null.rpc.json || true
+            lsts_goto_incoming_calls "linux/kernel/irq/spurious.c:28:13" > tests/fixtures/incoming_calls_try_one_irq.rpc.json
+            lsts_goto_outgoing_calls "linux/kernel/irq/spurious.c:80:12" > tests/fixtures/outgoing_calls_misrouted_irq.rpc.json
+            lsts_document_symbols "linux/kernel/irq/spurious.c" > tests/fixtures/document_symbols_spurious.rpc.json
+            lsts_references "linux/kernel/irq/spurious.c:28:13" > tests/fixtures/references_try_one_irq.rpc.json
+            lsts_rename "linux/kernel/irq/spurious.c:28:13" "try_one_interrupt" > tests/fixtures/rename_try_one_irq.rpc.json
+            lsts_formatting "linux/kernel/irq/spurious.c" > tests/fixtures/formatting_spurious.rpc.json
+            lsts_completion "linux/kernel/irq/spurious.c:28:4" > tests/fixtures/completion_try.rpc.json
+
+            lsts_stop
+          '
+      - name: Commit fixtures
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add tests/fixtures/
+          git diff --cached --quiet || git commit -m "chore: generate test fixtures"
+          git push
