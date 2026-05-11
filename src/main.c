@@ -1644,7 +1644,7 @@ static void handle_hover(const char *msg, const char *id)
                 }
             }
             if (found && end_marker) {
-                /* Find the matching '/**' opening. */
+                /* Find the matching opening of the doc comment. */
                 const char *start_marker = end_marker;
                 for (int bi = (int)(end_marker - src) - 2; bi >= 2; bi--) {
                     if (src[bi] == '*' && src[bi - 1] == '*' && src[bi - 2] == '/') {
@@ -1664,7 +1664,7 @@ static void handle_hover(const char *msg, const char *id)
                     size_t di = 0;
                     while (*p2 && *p2 != '\n' && *p2 != '\r' &&
                            di < sizeof(doc_text) - 1) {
-                        /* Stop at the " */" pattern */
+                        /* Stop at end-of-comment marker */
                         if (p2[0] == '*' && p2[1] == '/') break;
                         doc_text[di++] = *p2++;
                     }
