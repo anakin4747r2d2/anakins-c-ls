@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":2,"result":{"changes":{"file://$LSTS_ROOT/linux/kernel/irq/spurious.c":[{"range":{"start":{"line":96,"character":6},"end":{"line":96,"character":17}},"newText":"try_one_interrupt"},{"range":{"start":{"line":126,"character":2},"end":{"line":126,"character":13}},"newText":"try_one_interrupt"}]}}}
