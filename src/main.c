@@ -1057,6 +1057,66 @@ static void search_includes(const char *workspace_root,
     }
 }
 
+/*
+ * Return 1 if the cscope result line text looks like a struct, union, or
+ * typedef definition of the given identifier, 0 otherwise.
+ *
+ * ref_text is the 4th field from cscope output (the source line).
+ * ident/ident_len is the symbol being looked up.
+ *
+ * A match looks like:
+ *   struct irq_desc {        - "struct" SP ident SP "{"
+ *   union irq_desc {         - "union" SP ident SP "{"
+ *   typedef ... irq_desc;    - line starting with "typedef"
+ */
+static int cscope_line_is_type_definition(const char *ref_text,
+                                          const char *ident, uint32_t ident_len)
+{
+    /* Skip leading whitespace */
+    while (*ref_text == ' ' || *ref_text == '\t')
+        ref_text++;
+
+    /* typedef: any line starting with typedef that contains the identifier */
+    if (strncmp(ref_text, "typedef", 7) == 0) {
+        const char *p = ref_text;
+        while (*p) {
+            if (strncmp(p, ident, ident_len) == 0) {
+                /* Verify it's a whole-word match */
+                int pre_ok  = (p == ref_text || !(p[-1] == '_' ||
+                               (p[-1] >= 'a' && p[-1] <= 'z') ||
+                               (p[-1] >= 'A' && p[-1] <= 'Z') ||
+                               (p[-1] >= '0' && p[-1] <= '9')));
+                int post_ok = !(p[ident_len] == '_' ||
+                                (p[ident_len] >= 'a' && p[ident_len] <= 'z') ||
+                                (p[ident_len] >= 'A' && p[ident_len] <= 'Z') ||
+                                (p[ident_len] >= '0' && p[ident_len] <= '9'));
+                if (pre_ok && post_ok)
+                    return 1;
+            }
+            p++;
+        }
+        return 0;
+    }
+
+    /* struct/union definition: "struct <ident> {" or "union <ident> {" */
+    size_t kw_len = 0;
+    if (strncmp(ref_text, "struct", 6) == 0)      kw_len = 6;
+    else if (strncmp(ref_text, "union",  5) == 0) kw_len = 5;
+    if (!kw_len)
+        return 0;
+
+    const char *p = ref_text + kw_len;
+    while (*p == ' ' || *p == '\t') p++;
+    if (strncmp(p, ident, ident_len) != 0)
+        return 0;
+    p += ident_len;
+    if (*p == '_' || (*p >= 'a' && *p <= 'z') ||
+        (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9'))
+        return 0; /* identifier continues - not a match */
+    while (*p == ' ' || *p == '\t') p++;
+    return (*p == '{');
+}
+
 static void handle_definition(const char *msg, const char *id)
 {
     char uri[MAX_URI];
@@ -1202,9 +1262,16 @@ static void handle_definition(const char *msg, const char *id)
                 FILE *fp = popen(cmd, "r");
                 if (fp) {
                     char line_buf[4096];
-                    while (fgets(line_buf, sizeof(line_buf), fp) && count == 0) {
+                    char fb_uri[MAX_PATH * 2 + 8];
+                    int  fb_line  = 0;
+                    int  fb_valid = 0;
+
+                    fb_uri[0] = '\0';
+
+                    while (fgets(line_buf, sizeof(line_buf), fp)) {
                         char ref_file[MAX_PATH], ref_func[256], ref_text[1024];
                         int  ref_line = 0;
+                        ref_text[0] = '\0';
                         if (sscanf(line_buf, "%s %s %d %[^\n]",
                                    ref_file, ref_func, &ref_line, ref_text) < 3)
                             continue;
@@ -1214,14 +1281,43 @@ static void handle_definition(const char *msg, const char *id)
                         else
                             snprintf(ref_uri, sizeof(ref_uri), "file://%s/%s", db_dir, ref_file);
                         int lsp_line = ref_line > 0 ? ref_line - 1 : 0;
+
+                        if (!fb_valid) {
+                            snprintf(fb_uri, sizeof(fb_uri), "%s", ref_uri);
+                            fb_line  = lsp_line;
+                            fb_valid = 1;
+                        }
+
+                        /* For type_identifier: prefer an actual struct/union/
+                         * typedef definition over a variable declaration that
+                         * happens to share the same name. */
+                        if (strcmp(kind, "type_identifier") == 0) {
+                            if (!cscope_line_is_type_definition(
+                                        ref_text, ident, ident_len))
+                                continue;
+                        }
+
                         int elen = snprintf(locs, bufsz,
                             "{\"uri\":\"%s\","
                             "\"range\":{\"start\":{\"line\":%d,\"character\":0},"
                                        "\"end\":{\"line\":%d,\"character\":0}}}",
                             ref_uri, lsp_line, lsp_line);
-                        if (elen > 0) count = 1;
+                        if (elen > 0) {
+                            count = 1;
+                            break;
+                        }
                     }
                     pclose(fp);
+
+                    /* Fall back to the first result when no preferred one found */
+                    if (count == 0 && fb_valid) {
+                        int elen = snprintf(locs, bufsz,
+                            "{\"uri\":\"%s\","
+                            "\"range\":{\"start\":{\"line\":%d,\"character\":0},"
+                                       "\"end\":{\"line\":%d,\"character\":0}}}",
+                            fb_uri, fb_line, fb_line);
+                        if (elen > 0) count = 1;
+                    }
                 }
             }
         }
