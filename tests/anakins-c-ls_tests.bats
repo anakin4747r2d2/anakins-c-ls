@@ -379,6 +379,12 @@ teardown() {
         "fixtures/definition_macro_header.rpc.json"
 }
 
+@test "definition on type_identifier via cscope prefers struct definition over variable" {
+    lsts_definition \
+        "linux/arch/parisc/kernel/irq.c:191:10" \
+        "fixtures/definition_type_identifier_cscope.rpc.json"
+}
+
 @test "definition on non-identifier token returns null" {
     lsts_definition \
         "linux/drivers/gpio/gpio-amd8111.c:62:2" \
