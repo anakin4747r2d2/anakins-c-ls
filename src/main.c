@@ -1100,8 +1100,10 @@ static int cscope_line_is_type_definition(const char *ref_text,
 
     /* struct/union definition: "struct <ident> {" or "union <ident> {" */
     size_t kw_len = 0;
-    if (strncmp(ref_text, "struct", 6) == 0)      kw_len = 6;
-    else if (strncmp(ref_text, "union",  5) == 0) kw_len = 5;
+    if (strncmp(ref_text, "struct", 6) == 0)
+        kw_len = 6;
+    else if (strncmp(ref_text, "union", 5) == 0)
+        kw_len = 5;
     if (!kw_len)
         return 0;
 
