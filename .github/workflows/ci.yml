@@ -24,23 +24,7 @@ jobs:
           git -C tests/linux remote add origin git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
           git -C tests/linux config core.sparseCheckout true
           mkdir -p tests/linux/.git/info
-          cat > tests/linux/.git/info/sparse-checkout << 'EOF'
-          arch/arm/kernel/unwind.c
-          arch/arm/lib/xor-neon.c
-          arch/arm/mach-exynos/platsmp.c
-          arch/parisc/kernel/
-          arch/powerpc/kvm/book3s_paired_singles.c
-          crypto/shash.c
-          drivers/gpio/gpio-amd8111.c
-          include/
-          kernel/debug/kdb/kdb_io.c
-          kernel/irq/
-          kernel/pid_namespace.c
-          kernel/sched/core.c
-          kernel/sched/rt.c
-          kernel/time/sleep_timeout.c
-          kernel/umh.c
-          EOF
+          bash scripts/list-sparse-paths > tests/linux/.git/info/sparse-checkout
           LINUX_REV=46b513250491a7bfc97d98791dbe6a10bcc8129d
           git -C tests/linux fetch --depth 1 origin $LINUX_REV
           git -C tests/linux checkout FETCH_HEAD

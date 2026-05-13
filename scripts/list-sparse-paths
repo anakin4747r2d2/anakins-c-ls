@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# scripts/list-sparse-paths
+#
+# Scans all test fixtures and the bats test file for paths under "linux/"
+# and outputs them as a sparse-checkout path list for git.
+#
+# Each entry is the file or its parent directory (for files under a
+# directory that should be checked out in full, e.g. arch/parisc/kernel/).
+#
+# Usage:
+#   nix develop --command bash scripts/list-sparse-paths
+#   # or to update the CI sparse-checkout block:
+#   nix develop --command bash scripts/list-sparse-paths > /tmp/sparse-paths.txt
+
+set -euo pipefail
+
+TESTS_DIR="$(dirname "$0")/../tests"
+
+# Extract every "linux/<path>" reference from fixtures and the bats file,
+# stripping line:col suffixes (e.g. "linux/kernel/irq/proc.c:47:47" → "kernel/irq/proc.c")
+grep -rh 'linux/' \
+    "$TESTS_DIR/fixtures/" \
+    "$TESTS_DIR/anakins-c-ls_tests.bats" \
+  | grep -oP '(?<=linux/)[^"'"'"'\s]+' \
+  | sed 's/:[0-9]*:[0-9]*$//' \
+  | sed 's/:[0-9]*$//' \
+  | sort -u \
+  | grep -v '^\s*$'

@@ -1,4 +1,4 @@
-.PHONY: all build test filter lint install
+.PHONY: all build test filter lint install sparse-paths
 
 FILTER ?= .
 CC     ?= cc
@@ -31,3 +31,6 @@ filter:
 
 install:
 	nix profile install .
+
+sparse-paths:
+	bash scripts/list-sparse-paths
